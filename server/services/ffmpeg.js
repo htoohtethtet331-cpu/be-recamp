@@ -1,10 +1,12 @@
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegStatic = require('ffmpeg-static');
+const ffprobeStatic = require('ffprobe-static');
 const path = require('path');
 const fs = require('fs');
 
 // Configure fluent-ffmpeg to use the static binaries
 ffmpeg.setFfmpegPath(ffmpegStatic);
+ffmpeg.setFfprobePath(ffprobeStatic.path);
 
 // Helper to get audio duration using ffprobe
 const getAudioDuration = (filePath) => {
