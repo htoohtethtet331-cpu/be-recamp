@@ -14,6 +14,7 @@ const { mixAudioOnly } = require('./services/ffmpeg');
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1); // Trust Render's proxy to get correct https protocol
 const port = process.env.PORT || 5000;
 
 app.use(cors());
