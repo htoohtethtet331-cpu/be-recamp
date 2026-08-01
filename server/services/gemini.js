@@ -1,16 +1,22 @@
-const OpenAI = require('openai');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 /**
- * Translate an array of utterances to Burmese using OpenRouter (Gemini Model)
+ * Translate an array of utterances to Burmese using Google Gemini API
  * @param {Array} utterances - Array of objects {start, end, text}
+ * @param {string} apiKey - User provided Gemini API Key
  * @returns {Promise<Array>} - Array with translatedText added
  */
-const translateUtterances = async (utterances) => {
+const translateUtterances = async (utterances, apiKey) => {
   if (!utterances || utterances.length === 0) return [];
+  if (!apiKey) throw new Error("Google Gemini API Key is required.");
 
-  const openai = new OpenAI({
-    baseURL: "https://openrouter.ai/api/v1",
-    apiKey: process.env.OPENROUTER_API_KEY,
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: "gemini-1.5-flash",
+    generationConfig: {
+      temperature: 0.1,
+      responseMimeType: "application/json",
+    }
   });
 
   const textArray = utterances.map((u, i) => {
@@ -29,45 +35,39 @@ const translateUtterances = async (utterances) => {
       }
     }
     
-    return `ID: ${i} | Max Speaking Time: ${maxDuration.toFixed(1)}s | Text: "${u.text}"`;
+    return `ID: ${i} | Time Frame: ${(u.start / 1000).toFixed(1)}s to ${((u.start / 1000) + maxDuration).toFixed(1)}s (Max Limit: ${maxDuration.toFixed(1)}s) | Text: "${u.text}"`;
   }).join('\n');
 
   const prompt = `You are a professional video dubbing translator. You MUST translate the following English subtitles into natural spoken Burmese (Myanmar script ONLY, NO English, NO phonetic guides).
   
-CRITICAL AVOID-OVERLAP CONSTRAINT: For each subtitle, I have calculated the 'Max Speaking Time' in seconds (this is the absolute maximum time before the next person starts speaking). 
-If your Burmese translation takes longer to speak than this time, the voices will OVERLAP and ruin the video. 
-You MUST provide a translation that can be comfortably spoken aloud within this exact time limit. If the 'Max Speaking Time' is very short (e.g., 1.5s), you MUST use extreme abbreviation, discard polite ending particles, and use the absolute minimum number of syllables to convey the core meaning. Do not translate word-for-word if it makes the sentence long.
+CRITICAL TIME LIMIT CONSTRAINT: For each subtitle, I have provided the exact Time Frame (e.g. from Second A to Second B) and the Max Limit in seconds. 
+If your Burmese translation takes longer to speak than this time, the TTS audio will OVERLAP and ruin the video. 
+You MUST provide a translation that fits perfectly within this time frame. If the time limit is very short (e.g., under 2 seconds), you MUST aggressively compress and summarize the Burmese translation (ချုံ့ပေးပါ) so it can be spoken very fast. Discard polite particles and unnecessary words. Do not translate word-for-word.
 
-Return the result STRICTLY as a valid JSON array of strings, where each string is the translated Burmese text corresponding to the input ID in order. Do NOT wrap the JSON in markdown code blocks. Just return the raw JSON array like this:
-[
-  "မြန်မာစာသား ၁",
-  "မြန်မာစာသား ၂"
-]
+Return the result STRICTLY as a JSON object with a single key "translations" which contains an array of strings, where each string is the translated Burmese text corresponding to the input ID in order.
+Example:
+{
+  "translations": [
+    "မြန်မာစာသား ၁",
+    "မြန်မာစာသား ၂"
+  ]
+}
 
 Inputs:
 ${textArray}`;
 
   try {
-    const chatCompletion = await openai.chat.completions.create({
-      messages: [{ role: 'user', content: prompt }],
-      model: 'google/gemini-2.5-flash',
-      temperature: 0.1,
-      max_tokens: 8000,
-    });
-
-    let content = chatCompletion.choices[0].message.content.trim();
-    if (content.startsWith('```json')) content = content.replace(/```json/g, '');
-    if (content.endsWith('```')) content = content.replace(/```/g, '');
-    
+    const result = await model.generateContent(prompt);
+    let content = result.response.text().trim();
     const parsed = JSON.parse(content);
     
     return utterances.map((u, i) => ({
       ...u,
-      translatedText: parsed[i] || u.text
+      translatedText: parsed.translations[i] || u.text
     }));
   } catch (error) {
     console.error("Batch translation failed:", error.message);
-    return utterances;
+    throw error;
   }
 };
 

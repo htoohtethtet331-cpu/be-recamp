@@ -11,6 +11,7 @@ const { translateUtterances } = require('./services/gemini');
 const { generateTTSForUtterances } = require('./services/tts');
 const { mixAudioOnly } = require('./services/ffmpeg');
 
+
 dotenv.config();
 
 const app = express();
@@ -75,13 +76,16 @@ app.post('/api/step1-extract', upload.single('audio'), async (req, res) => {
 // Step 2: Translate English text to Burmese
 app.post('/api/step2-translate', async (req, res) => {
   try {
-    const { utterances } = req.body;
+    const { utterances, apiKey } = req.body;
     if (!utterances || !Array.isArray(utterances)) {
       return res.status(400).json({ error: 'Invalid utterances array provided' });
     }
+    if (!apiKey) {
+      return res.status(400).json({ error: 'Gemini API Key is required' });
+    }
     
     console.log(`[Step 2] Received ${utterances.length} utterances for translation.`);
-    const translatedUtterances = await translateUtterances(utterances);
+    const translatedUtterances = await translateUtterances(utterances, apiKey);
     
     console.log(`[Step 2] Translation complete.`);
     res.json({ translatedUtterances });
@@ -110,7 +114,7 @@ app.post('/api/step3-tts', async (req, res) => {
     const utterancesWithAudio = await generateTTSForUtterances(translatedUtterances, ttsOutputDir, voice);
     
     console.log(`[Step 3] Mixing audio tracks...`);
-    const finalAudioPath = await mixAudioOnly(utterancesWithAudio, ttsOutputDir);
+    const { finalAudioPath, completeVideoSegments, updatedUtterances: finalUtterances } = await mixAudioOnly(utterancesWithAudio, ttsOutputDir);
     
     console.log(`[Step 3] Skipping Cloudinary upload, using local URL to speed up...`);
     const baseUrl = req.protocol + '://' + req.get('host');
@@ -126,13 +130,17 @@ app.post('/api/step3-tts', async (req, res) => {
     console.log(`[Step 3] Process finished successfully.`);
     res.json({ 
       message: 'Processing complete', 
-      url: localUrl
+      url: localUrl,
+      finalAudioFilename: path.basename(finalAudioPath),
+      videoSegments: completeVideoSegments,
+      updatedUtterances: finalUtterances
     });
   } catch (error) {
     console.error('Step 3 Error:', error);
     res.status(500).json({ error: 'TTS & Mixing failed', details: error.message });
   }
 });
+
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
@@ -144,8 +152,24 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-const server = app.listen(port, () => {
-  console.log(`Server listening on port ${port}`);
+const os = require('os');
+const getLocalIP = () => {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost';
+};
+
+const server = app.listen(port, '0.0.0.0', () => {
+  const localIP = getLocalIP();
+  console.log(`✅ Server running!`);
+  console.log(`   Local:   http://localhost:${port}`);
+  console.log(`   Network: http://${localIP}:${port}`);
 });
 
 // Disable timeouts to prevent 408 errors during large uploads
