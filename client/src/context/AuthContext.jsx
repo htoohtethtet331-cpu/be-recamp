@@ -9,6 +9,10 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('token') || null);
 
+  const apiUrl = import.meta.env.PROD
+    ? (import.meta.env.VITE_API_URL || '/api')
+    : `http://${window.location.hostname}:5001/api`;
+
   useEffect(() => {
     if (token) {
       try {
@@ -21,7 +25,7 @@ export const AuthProvider = ({ children }) => {
           localStorage.setItem('token', token);
           
           // Fetch fresh token to update role if changed by admin
-          fetch('http://localhost:5001/api/auth/me', {
+          fetch(`${apiUrl}/auth/me`, {
             headers: { 'Authorization': `Bearer ${token}` }
           })
           .then(res => res.json())
