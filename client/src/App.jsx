@@ -1041,7 +1041,11 @@ ${textArray}`;
         </div>
       );
     }
-    return <AdminDashboard onBack={() => navigate('/')} />;
+    return (
+      <div className="min-h-screen bg-[#0F172A] flex flex-col items-center justify-center p-4">
+        <AdminDashboard onBack={() => navigate('/')} />
+      </div>
+    );
   }
 
   if (appMode === 'auto' && isPremium) {
