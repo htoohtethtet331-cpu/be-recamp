@@ -7,6 +7,10 @@ export default function AdminDashboard({ onBack }) {
   const [activeTab, setActiveTab] = useState('keys'); // 'keys' or 'users'
   const { token } = useAuth();
   
+  const apiUrl = import.meta.env.PROD
+    ? (import.meta.env.VITE_API_URL || '/api')
+    : `http://${window.location.hostname}:5001/api`;
+
   // Keys state
   const [keys, setKeys] = useState({ geminiKey: '', groqKey: '', assemblyAiKey: '' });
   const [loadingKeys, setLoadingKeys] = useState(true);
@@ -28,7 +32,7 @@ export default function AdminDashboard({ onBack }) {
   useEffect(() => {
     const fetchKeys = async () => {
       try {
-        const response = await axios.get('/api/admin/keys', apiConfig);
+        const response = await axios.get(`${apiUrl}/admin/keys`, apiConfig);
         setKeys({
           geminiKey: response.data.geminiKey || '',
           groqKey: response.data.groqKey || '',
@@ -43,7 +47,7 @@ export default function AdminDashboard({ onBack }) {
 
     const fetchUsers = async () => {
       try {
-        const response = await axios.get('/api/admin/users', apiConfig);
+        const response = await axios.get(`${apiUrl}/admin/users`, apiConfig);
         setUsers(response.data);
         const roles = {};
         response.data.forEach(u => {
@@ -68,7 +72,7 @@ export default function AdminDashboard({ onBack }) {
     setSavingKeys(true);
     setKeyMessage('');
     try {
-      await axios.post('/api/admin/keys', keys, apiConfig);
+      await axios.post(`${apiUrl}/admin/keys`, keys, apiConfig);
       setKeyMessage('API Keys saved successfully!');
       setTimeout(() => setKeyMessage(''), 3000);
     } catch (error) {
