@@ -1,23 +1,6 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-
-/**
- * Translate an array of utterances to Burmese using Google Gemini API
- * @param {Array} utterances - Array of objects {start, end, text}
- * @param {string} apiKey - User provided Gemini API Key
- * @returns {Promise<Array>} - Array with translatedText added
- */
 const translateUtterances = async (utterances, apiKey) => {
   if (!utterances || utterances.length === 0) return [];
-  if (!apiKey) throw new Error("Google Gemini API Key is required.");
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
-    generationConfig: {
-      temperature: 0.1,
-      responseMimeType: "application/json",
-    }
-  });
+  if (!apiKey) throw new Error("OpenRouter API Key is required.");
 
   const textArray = utterances.map((u, i) => {
     let maxDuration = (u.end - u.start) / 1000;
@@ -57,8 +40,66 @@ Inputs:
 ${textArray}`;
 
   try {
-    const result = await model.generateContent(prompt);
-    let content = result.response.text().trim();
+    let content = "";
+    
+    // Auto-detect API type based on key format
+    const cleanKey = apiKey.trim();
+    if (cleanKey.startsWith("AIza")) {
+      // Native Google Gemini API
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${cleanKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: "application/json"
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Google Gemini API error: ${response.status} - ${errText}`);
+      }
+
+      const data = await response.json();
+      content = data.candidates[0].content.parts[0].text.trim();
+      
+    } else {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${cleanKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3.5-flash-lite", 
+          temperature: 0.1,
+          max_tokens: 4000,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "user", content: prompt }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`OpenRouter API error: ${response.status} - ${errText}`);
+      }
+
+      const data = await response.json();
+      content = data.choices[0].message.content.trim();
+    }
+    
+    // Clean up potential markdown code block formatting
+    if (content.startsWith('```json')) {
+      content = content.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (content.startsWith('```')) {
+      content = content.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+
     const parsed = JSON.parse(content);
     
     return utterances.map((u, i) => ({

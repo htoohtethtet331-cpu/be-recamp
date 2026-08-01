@@ -10,3 +10,8 @@
    background-color: #f3f4f6;
    /* light gray background */
  }
+
+ @keyframes shimmer {
+   0% { transform: translateX(-100%); }
+   100% { transform: translateX(100%); }
+ }

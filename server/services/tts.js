@@ -36,11 +36,12 @@ const generateTTSForUtterances = async (utterances, outputDir, voiceName = 'my-M
   try {
     const processedUtterances = [...utterances];
     
-    // Process in batches of 20 to speed up execution
-    const BATCH_SIZE = 20;
+    // Process in batches of 5 to avoid Edge TTS websocket drops/hangs
+    const BATCH_SIZE = 5;
     
     for (let i = 0; i < processedUtterances.length; i += BATCH_SIZE) {
       const batch = processedUtterances.slice(i, i + BATCH_SIZE);
+      console.log(`Processing TTS batch ${i/BATCH_SIZE + 1} of ${Math.ceil(processedUtterances.length / BATCH_SIZE)}...`);
       
       await Promise.all(batch.map(async (u, batchIndex) => {
         if (!u.translatedText) return;
@@ -63,6 +64,11 @@ const generateTTSForUtterances = async (utterances, outputDir, voiceName = 'my-M
           console.error(`Failed to generate TTS for utterance ${originalIndex}:`, err);
         }
       }));
+      
+      // Sleep for 500ms between batches to prevent rate limiting
+      if (i + BATCH_SIZE < processedUtterances.length) {
+        await sleep(500);
+      }
     }
 
     return processedUtterances;
