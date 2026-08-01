@@ -1181,6 +1181,35 @@ ${textArray}`;
                   </button>
                 </div>
 
+                {/* Voice Selection for Auto Mode */}
+                <div className="bg-white/5 backdrop-blur-md p-4 rounded-xl border border-white/10 shadow-sm flex flex-col gap-3">
+                  <p className="font-bold text-white drop-shadow-md text-sm text-left">အသံရွေးချယ်ရန် (Voice Selection):</p>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="auto-voice"
+                        value="my-MM-NilarNeural"
+                        checked={selectedVoice === 'my-MM-NilarNeural'}
+                        onChange={(e) => setSelectedVoice(e.target.value)}
+                        className="w-4 h-4 text-emerald-400 focus:ring-emerald-500 bg-black/20 border-white/20"
+                      />
+                      <span className="text-sm font-medium text-gray-200">နီလာ (Nilar - Female)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="auto-voice"
+                        value="my-MM-ThihaNeural"
+                        checked={selectedVoice === 'my-MM-ThihaNeural'}
+                        onChange={(e) => setSelectedVoice(e.target.value)}
+                        className="w-4 h-4 text-emerald-400 focus:ring-emerald-500 bg-black/20 border-white/20"
+                      />
+                      <span className="text-sm font-medium text-gray-200">သီဟ (Thiha - Male)</span>
+                    </label>
+                  </div>
+                </div>
+
                 <button
                   onClick={handleAutoProcess}
                   disabled={loading}
