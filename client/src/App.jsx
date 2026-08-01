@@ -1070,29 +1070,37 @@ ${textArray}`;
             <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-600">Recap Studio</h1>
           </div>
           {/* Mode Switcher */}
-          <div className="absolute left-1/2 -translate-x-1/2 bg-white/5 p-1 rounded-full flex items-center shadow-inner border border-white/10 hidden md:flex">
+          <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 bg-white/5 p-1 rounded-full items-center shadow-inner border border-white/10">
             <button onClick={() => setAppMode('manual')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${appMode === 'manual' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>Manual Editor</button>
             <button onClick={() => { if (!isPremium) setShowPremiumModal(true); else setAppMode('auto'); }} className={`px-6 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${appMode === 'auto' ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/30' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><Sparkles className="w-4 h-4" /> Auto Mode</button>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-full pl-2 pr-4 py-1.5">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-3 bg-white/5 border border-white/10 rounded-full pl-1 sm:pl-2 pr-3 sm:pr-4 py-1 sm:py-1.5">
               {user.picture ? (
-                <img src={user.picture} alt={user.name} className="w-8 h-8 rounded-full border border-purple-500/50" />
+                <img src={user.picture} alt={user.name} className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-purple-500/50" />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center font-bold text-sm">{user.name.charAt(0)}</div>
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-purple-600 flex items-center justify-center font-bold text-xs sm:text-sm">{user.name.charAt(0)}</div>
               )}
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-white leading-none">{user.name}</span>
-                <span className="text-[10px] text-purple-400 uppercase tracking-wider font-bold mt-1">{user.role}</span>
+              <div className="flex flex-col max-w-[80px] sm:max-w-none overflow-hidden">
+                <span className="text-xs sm:text-sm font-medium text-white leading-none truncate">{user.name}</span>
+                <span className="text-[8px] sm:text-[10px] text-purple-400 uppercase tracking-wider font-bold mt-1">{user.role}</span>
               </div>
-              <button onClick={logout} className="ml-2 p-1.5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 rounded-full transition-colors"><LogOut className="w-4 h-4" /></button>
+              <button onClick={logout} className="ml-1 p-1 sm:p-1.5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 rounded-full transition-colors shrink-0"><LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" /></button>
             </div>
             {user?.role === 'admin' && (
-              <button onClick={() => navigate('/admin')} className="p-2.5 bg-white/10 hover:bg-white/20 rounded-xl transition-all shadow-sm border border-white/20 group">
-                <Settings className="w-5 h-5 text-gray-300 group-hover:text-white group-hover:rotate-90 transition-all duration-300" />
+              <button onClick={() => navigate('/admin')} className="p-1.5 sm:p-2.5 bg-white/10 hover:bg-white/20 rounded-xl transition-all shadow-sm border border-white/20 group">
+                <Settings className="w-4 h-4 sm:w-5 sm:h-5 text-gray-300 group-hover:text-white group-hover:rotate-90 transition-all duration-300" />
               </button>
             )}
+          </div>
+        </div>
+
+        {/* Mobile Mode Switcher (Below Header) */}
+        <div className="md:hidden w-full bg-white/5 border-b border-white/10 p-2 flex justify-center shadow-inner">
+          <div className="flex bg-black/20 p-1 rounded-full items-center">
+            <button onClick={() => setAppMode('manual')} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${appMode === 'manual' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>Manual</button>
+            <button onClick={() => { if (!isPremium) setShowPremiumModal(true); else setAppMode('auto'); }} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1 ${appMode === 'auto' ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/30' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><Sparkles className="w-3 h-3" /> Auto</button>
           </div>
         </div>
 
@@ -1235,7 +1243,31 @@ ${textArray}`;
   }
 
   return (
-    <div className="min-h-screen bg-[#0F172A] flex items-center justify-center p-4 font-sans text-white">
+    <div className="min-h-screen bg-[#0F172A] flex items-center justify-center p-4 font-sans text-white relative pt-20 sm:pt-4">
+      {/* Global Top-Right User Menu */}
+      <div className="absolute top-4 right-4 z-50 flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 bg-white/5 backdrop-blur-xl border border-white/10 rounded-full pl-1 sm:pl-2 pr-3 sm:pr-4 py-1 sm:py-1.5 shadow-lg">
+          {user.picture ? (
+            <img src={user.picture} alt={user.name} className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-purple-500/50 shrink-0" />
+          ) : (
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-purple-600 flex items-center justify-center font-bold text-xs sm:text-sm shrink-0">
+              {user.name.charAt(0)}
+            </div>
+          )}
+          <div className="flex flex-col overflow-hidden max-w-[80px] sm:max-w-[150px]">
+            <span className="text-xs sm:text-sm font-medium text-white leading-none truncate">{user.name}</span>
+            <span className="text-[8px] sm:text-[10px] text-purple-400 uppercase tracking-wider font-bold mt-0.5">{user.role}</span>
+          </div>
+          <button onClick={logout} className="ml-1 p-1 sm:p-1.5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 rounded-full transition-colors shrink-0" title="Logout">
+            <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          </button>
+        </div>
+        {user?.role === 'admin' && (
+          <button onClick={() => navigate('/admin')} className="p-1.5 sm:p-2.5 bg-white/10 hover:bg-white/20 rounded-xl transition-all shadow-sm border border-white/20 group backdrop-blur-xl">
+            <Settings className="w-4 h-4 sm:w-5 sm:h-5 text-gray-300 group-hover:text-white group-hover:rotate-90 transition-all duration-300" />
+          </button>
+        )}
+      </div>
       {/* Background Task Floating Indicator */}
       {backgroundTask.status !== 'idle' && (
         <div className="fixed top-6 left-6 z-50 flex items-center bg-white/10 backdrop-blur-md/95 backdrop-blur-md shadow-2xl border border-white/20/50 rounded-full pl-2 pr-5 py-2.5 gap-4 transition-all duration-500 hover:scale-105">
@@ -1317,29 +1349,9 @@ ${textArray}`;
             </div>
           </div>
           {/* Mode Switcher */}
-          <div className="hidden md:flex ml-4 bg-white/5 p-1 rounded-full flex items-center shadow-inner border border-white/10 hidden md:flex">
-            <button onClick={() => setAppMode('manual')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${appMode === 'manual' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>Manual Editor</button>
-            <button onClick={() => { if (!isPremium) setShowPremiumModal(true); else setAppMode('auto'); }} className={`px-6 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${appMode === 'auto' ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/30' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><Sparkles className="w-4 h-4" /> Auto Mode</button>
-          </div>
-
-
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-full pl-2 pr-4 py-1.5 shrink-0 max-w-[200px] sm:max-w-none">
-              {user.picture ? (
-                <img src={user.picture} alt={user.name} className="w-8 h-8 rounded-full border border-purple-500/50 shrink-0" />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center font-bold text-sm shrink-0">
-                  {user.name.charAt(0)}
-                </div>
-              )}
-              <div className="flex flex-col overflow-hidden">
-                <span className="text-sm font-medium text-white leading-none truncate">{user.name}</span>
-                <span className="text-[10px] text-purple-400 uppercase tracking-wider font-bold mt-1">{user.role}</span>
-              </div>
-              <button onClick={logout} className="ml-1 p-1.5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 rounded-full transition-colors shrink-0" title="Logout">
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
+          <div className="flex bg-white/5 p-1 rounded-full items-center shadow-inner border border-white/10 ml-auto shrink-0">
+            <button onClick={() => setAppMode('manual')} className={`px-3 sm:px-6 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-bold transition-all ${appMode === 'manual' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>Manual</button>
+            <button onClick={() => { if (!isPremium) setShowPremiumModal(true); else setAppMode('auto'); }} className={`px-3 sm:px-6 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${appMode === 'auto' ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/30' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><Sparkles className="w-3 h-3 sm:w-4 sm:h-4" /> Auto</button>
           </div>
           <div className="flex gap-2 text-xs font-bold text-blue-400 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 hide-scrollbar">
             <span className={`whitespace-nowrap ${step >= 1 ? 'text-blue-300' : 'text-gray-500'}`}>1. Upload</span>
