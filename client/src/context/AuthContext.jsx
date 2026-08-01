@@ -1,0 +1,62 @@
+import { createContext, useContext, useState, useEffect } from 'react';
+import { jwtDecode } from "jwt-decode";
+
+const AuthContext = createContext();
+
+export const useAuth = () => useContext(AuthContext);
+
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('token') || null);
+
+  useEffect(() => {
+    if (token) {
+      try {
+        const decoded = jwtDecode(token);
+        // Check if token is expired
+        if (decoded.exp * 1000 < Date.now()) {
+          logout();
+        } else {
+          setUser(decoded);
+          localStorage.setItem('token', token);
+          
+          // Fetch fresh token to update role if changed by admin
+          fetch('http://localhost:5001/api/auth/me', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (data.token && data.user) {
+              if (data.user.role !== decoded.role) {
+                setToken(data.token);
+              }
+            }
+          })
+          .catch(err => console.error('Failed to refresh user', err));
+        }
+      } catch (error) {
+        logout();
+      }
+    } else {
+      setUser(null);
+      localStorage.removeItem('token');
+    }
+  }, [token]);
+
+  const login = (newToken) => {
+    setToken(newToken);
+  };
+
+  const logout = () => {
+    setToken(null);
+    setUser(null);
+    localStorage.removeItem('token');
+    window.location.href = '/'; // Force redirect to home on logout
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, token, login, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
