@@ -301,18 +301,28 @@ function App() {
 
   if (!ffmpegLoaded) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-6 font-sans flex items-center justify-center">
-        <div className="max-w-md w-full bg-white/10 backdrop-blur-md/80 backdrop-blur-xl p-8 rounded-3xl shadow-xl border border-white/50 text-center space-y-6">
+      <div className="min-h-screen bg-[#0F172A] flex flex-col items-center justify-center p-4 relative overflow-hidden">
+        {/* Decorative Background Elements */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-500/20 rounded-full blur-[100px] opacity-50"></div>
+        
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl rounded-3xl p-10 max-w-md w-full text-center space-y-8 relative z-10">
           <div className="relative flex h-24 w-24 mx-auto items-center justify-center">
-            <div className="absolute h-full w-full animate-spin rounded-full border-4 border-white/20 border-t-blue-600"></div>
-            <Sparkles className="h-10 w-10 text-blue-300 animate-pulse" />
+            <div className="absolute h-full w-full animate-ping rounded-full border-2 border-blue-400/30"></div>
+            <div className="absolute h-full w-full animate-spin rounded-full border-4 border-white/10 border-t-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]"></div>
+            <Sparkles className="h-10 w-10 text-blue-400 animate-pulse" />
           </div>
-          <h2 className="text-2xl font-bold text-white">Recap Studio AI</h2>
-          <p className="text-white/80 font-medium leading-relaxed">
-            {ffmpegLoadingText}
-          </p>
-          <div className="h-1 w-full bg-white/10/20 rounded-full overflow-hidden">
-            <div className="h-full bg-blue-600 w-full animate-pulse"></div>
+          
+          <div>
+            <h2 className="text-2xl font-bold text-white mb-2 drop-shadow-md">Recap Studio AI</h2>
+            <p className="text-blue-200/80 text-sm font-medium leading-relaxed bg-black/20 py-3 px-4 rounded-xl border border-white/5 inline-block">
+              {ffmpegLoadingText}
+            </p>
+          </div>
+          
+          <div className="h-2 w-full bg-black/40 rounded-full overflow-hidden shadow-inner border border-white/10">
+            <div className="h-full bg-gradient-to-r from-blue-600 via-indigo-500 to-purple-500 w-full animate-pulse rounded-full relative">
+              <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]"></div>
+            </div>
           </div>
         </div>
       </div>
