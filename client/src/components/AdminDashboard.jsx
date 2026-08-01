@@ -94,7 +94,7 @@ export default function AdminDashboard({ onBack }) {
       // Find all users whose roles have changed
       const updates = users.map(async (u) => {
         if (draftRoles[u._id] && draftRoles[u._id] !== u.role) {
-          await axios.put(`/api/admin/users/${u._id}/role`, { role: draftRoles[u._id] }, apiConfig);
+          await axios.put(`${apiUrl}/admin/users/${u._id}/role`, { role: draftRoles[u._id] }, apiConfig);
         }
       });
       await Promise.all(updates);
