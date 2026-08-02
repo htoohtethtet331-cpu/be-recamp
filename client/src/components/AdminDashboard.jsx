@@ -9,7 +9,7 @@ export default function AdminDashboard({ onBack }) {
   
   const apiUrl = import.meta.env.PROD
     ? (import.meta.env.VITE_API_URL || '/api')
-    : `http://${window.location.hostname}:5001/api`;
+    : `http://${window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname}:5001/api`;
 
   // Keys state
   const [keys, setKeys] = useState({ geminiKey: '', groqKey: '', assemblyAiKey: '' });

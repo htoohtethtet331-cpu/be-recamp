@@ -326,7 +326,7 @@ const getLocalIP = () => {
   return 'localhost';
 };
 
-const server = app.listen(port, '0.0.0.0', () => {
+const server = app.listen(port, () => {
   const localIP = getLocalIP();
   console.log(`✅ Server running!`);
   console.log(`   Local:   http://localhost:${port}`);

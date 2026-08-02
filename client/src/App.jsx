@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
-import { CheckCircle2, Download, RefreshCw, Play, Loader2, AlertTriangle, SlidersHorizontal, ArrowRight, Video, Sparkles, Copy, Settings, LogOut, UploadCloud, Headphones } from 'lucide-react';
+import { CheckCircle2, Download, RefreshCw, Play, Loader2, AlertTriangle, SlidersHorizontal, ArrowRight, Video, Sparkles, Copy, Settings, LogOut, UploadCloud, Headphones, Zap } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from './context/AuthContext';
@@ -62,12 +62,12 @@ const AILoadingOverlay = ({ isLoading, steps, progress }) => {
           <div className="w-full mt-4">
             <div className="flex justify-between text-xs text-white/70 mb-1">
               <span>Progress</span>
-              <span>{Math.round(progress * 100)}%</span>
+              <span>{Math.round(progress)}%</span>
             </div>
             <div className="w-full bg-white/20 rounded-full h-2">
               <div
                 className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${Math.min(100, Math.max(0, progress * 100))}%` }}
+                style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
               ></div>
             </div>
           </div>
@@ -220,7 +220,7 @@ function App() {
   const [step2Text, setStep2Text] = useState('');
   const [step3Text, setStep3Text] = useState('');
   const [selectedVoice, setSelectedVoice] = useState('my-MM-NilarNeural');
-
+  const [renderMode, setRenderMode] = useState('premium'); // 'fast' | 'premium'
   // Translation Mode States
   const [translationMode, setTranslationMode] = useState(null); // 'manual' | 'api'
   const [geminiApiKey, setGeminiApiKey] = useState(localStorage.getItem('geminiApiKey') || '');
@@ -332,7 +332,7 @@ function App() {
   // Use VITE_API_URL for separate frontend deployments (like Netlify), fallback to /api if unified
   const apiUrl = import.meta.env.PROD
     ? (import.meta.env.VITE_API_URL || '/api')
-    : `http://${window.location.hostname}:5001/api`;
+    : `http://${window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname}:5001/api`;
 
   const resetFlow = () => {
     setStep(1);
@@ -487,6 +487,14 @@ function App() {
           const finalData = await ffmpeg.readFile('final_output.mp4');
           const finalUrl = URL.createObjectURL(new Blob([finalData.buffer], { type: 'video/mp4' }));
           setFinalVideoUrl(finalUrl);
+
+          // CLEAR MEMORY to prevent slowdowns on next render
+          await ffmpeg.deleteFile('input_video.mp4').catch(() => {});
+          await ffmpeg.deleteFile('merge_input_audio.mp3').catch(() => {});
+          await ffmpeg.deleteFile('final_output.mp4').catch(() => {});
+          if (needsStretching) {
+            await ffmpeg.deleteFile('filter.txt').catch(() => {});
+          }
         } catch (bgErr) {
           console.error("Background render failed:", bgErr);
           setError("Failed to process final video: " + bgErr.message);
@@ -633,7 +641,7 @@ function App() {
 
       // 4. Build FFmpeg command based on whether stretching is actually needed
       let needsStretching = false;
-      if (videoSegments && videoSegments.length > 0) {
+      if (renderMode === 'premium' && videoSegments && videoSegments.length > 0) {
         needsStretching = videoSegments.some(seg => Math.abs(seg.videoSpeed - 1.0) > 0.001);
       }
 
@@ -701,6 +709,15 @@ function App() {
       const data = await renderFfmpeg.readFile('output.mp4');
       const finalBlob = new Blob([data.buffer], { type: 'video/mp4' });
       const finalUrl = URL.createObjectURL(finalBlob);
+
+      // CLEAR MEMORY: Delete files from FFmpeg virtual file system to prevent RAM leak and slowdowns
+      await renderFfmpeg.deleteFile('input.mp4').catch(() => {});
+      await renderFfmpeg.deleteFile('tts.mp3').catch(() => {});
+      await renderFfmpeg.deleteFile('output.mp4').catch(() => {});
+      if (needsStretching) {
+        await renderFfmpeg.deleteFile('filter.txt').catch(() => {});
+      }
+
       setBackgroundTask({
         status: 'done',
         progress: 100,
@@ -1190,31 +1207,47 @@ ${textArray}`;
                 </div>
 
                 {/* Voice Selection for Auto Mode */}
-                <div className="bg-white/5 backdrop-blur-md p-4 rounded-xl border border-white/10 shadow-sm flex flex-col gap-3">
-                  <p className="font-bold text-white drop-shadow-md text-sm text-left">အသံရွေးချယ်ရန် (Voice Selection):</p>
-                  <div className="flex gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="auto-voice"
-                        value="my-MM-NilarNeural"
-                        checked={selectedVoice === 'my-MM-NilarNeural'}
-                        onChange={(e) => setSelectedVoice(e.target.value)}
-                        className="w-4 h-4 text-emerald-400 focus:ring-emerald-500 bg-black/20 border-white/20"
-                      />
-                      <span className="text-sm font-medium text-gray-200">နီလာ (Nilar - Female)</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="auto-voice"
-                        value="my-MM-ThihaNeural"
-                        checked={selectedVoice === 'my-MM-ThihaNeural'}
-                        onChange={(e) => setSelectedVoice(e.target.value)}
-                        className="w-4 h-4 text-emerald-400 focus:ring-emerald-500 bg-black/20 border-white/20"
-                      />
-                      <span className="text-sm font-medium text-gray-200">သီဟ (Thiha - Male)</span>
-                    </label>
+                <div className="flex flex-col gap-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div
+                      onClick={() => setSelectedVoice('my-MM-NilarNeural')}
+                      className={`p-4 rounded-2xl border flex flex-col items-center justify-center gap-2 cursor-pointer transition-all ${selectedVoice === 'my-MM-NilarNeural'
+                          ? 'border-emerald-400 bg-emerald-900/30 shadow-[0_0_15px_rgba(52,211,153,0.3)]'
+                          : 'border-white/10 bg-[#0f172a] hover:bg-white/5 hover:border-white/20'
+                        }`}
+                    >
+                      <div className="text-3xl mb-1">👩🏼‍💼</div>
+                      <div className="text-sm font-semibold text-white">Nilar • မိန်းကလေး</div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          new Audio('/assets/nilar_preview.mp3').play();
+                        }}
+                        className="mt-2 flex items-center gap-1.5 px-4 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-emerald-400 rounded-full text-xs font-medium transition-colors border border-white/5"
+                      >
+                        <Play className="w-3 h-3" /> Preview
+                      </button>
+                    </div>
+
+                    <div
+                      onClick={() => setSelectedVoice('my-MM-ThihaNeural')}
+                      className={`p-4 rounded-2xl border flex flex-col items-center justify-center gap-2 cursor-pointer transition-all ${selectedVoice === 'my-MM-ThihaNeural'
+                          ? 'border-emerald-400 bg-emerald-900/30 shadow-[0_0_15px_rgba(52,211,153,0.3)]'
+                          : 'border-white/10 bg-[#0f172a] hover:bg-white/5 hover:border-white/20'
+                        }`}
+                    >
+                      <div className="text-3xl mb-1">👨🏼‍💼</div>
+                      <div className="text-sm font-semibold text-white">Thiha • ယောက်ျားလေး</div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          new Audio('/assets/thiha_preview.mp3').play();
+                        }}
+                        className="mt-2 flex items-center gap-1.5 px-4 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-emerald-400 rounded-full text-xs font-medium transition-colors border border-white/5"
+                      >
+                        <Play className="w-3 h-3" /> Preview
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1237,7 +1270,7 @@ ${textArray}`;
             )}
           </div>
         </div>
-        <AILoadingOverlay isLoading={loading} steps={loadingSteps} progress={ffmpegProgress} />
+        <AILoadingOverlay isLoading={loading} steps={loadingSteps} progress={0} />
       </div>
     );
   }
@@ -1373,28 +1406,35 @@ ${textArray}`;
               <h2 className="font-bold text-white mb-1">Step 1: Video တင်ပါ</h2>
               <p className="text-xs text-white/70 mb-4">Recap လုပ်မည့် video ကို ရွေးချယ်ပါ။ (အသံကို အရင်ဆွဲထုတ်ပါမည်)</p>
 
-              <div className="border-2 border-dashed border-white/20 bg-black/20 rounded-xl p-6 text-center cursor-pointer relative overflow-hidden transition hover:bg-white/20">
-                <input
-                  type="file"
-                  accept="video/*,audio/*"
-                  onChange={handleFileChange}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  disabled={loading}
-                />
-                {file ? (
-                  <div className="flex flex-col items-center justify-center gap-2 text-green-300 font-medium z-10 relative pointer-events-none">
-                    <CheckCircle2 className="w-8 h-8 text-green-400 mb-1" />
-                    <span className="truncate max-w-xs text-sm">{file.name}</span>
-                  </div>
-                ) : (
+              {!file && (
+                <div className="border-2 border-dashed border-white/20 bg-black/20 rounded-xl p-6 text-center cursor-pointer relative overflow-hidden transition hover:bg-white/20">
+                  <input
+                    type="file"
+                    accept="video/*,audio/*"
+                    onChange={handleFileChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    disabled={loading}
+                  />
                   <span className="text-white/70 font-medium text-sm z-10 relative pointer-events-none">နှိပ်၍ File ရွေးချယ်ပါ</span>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* Video Preview right after selection to test browser compatibility */}
               {videoUrl && (
                 <div className="mt-4 rounded-xl overflow-hidden border border-white/30 bg-black">
-                  <p className="bg-white/10/20 text-xs text-center p-1 text-white/70">Local Cache (Blob URL) Preview</p>
+                  <div className="bg-white/10/20 p-2 flex justify-between items-center px-4">
+                    <span className="text-xs text-white/70 font-medium truncate max-w-[200px]">{file?.name || 'Local Cache Preview'}</span>
+                    <label className="text-xs text-blue-400 hover:text-blue-300 cursor-pointer font-bold flex items-center gap-1">
+                      <RefreshCw className="w-3 h-3" /> Change File
+                      <input
+                        type="file"
+                        accept="video/*,audio/*"
+                        onChange={handleFileChange}
+                        className="hidden"
+                        disabled={loading}
+                      />
+                    </label>
+                  </div>
                   <video src={videoUrl} controls className="w-full h-48 object-contain" playsInline />
                 </div>
               )}
@@ -1419,7 +1459,7 @@ ${textArray}`;
                 <textarea
                   value={step2Text}
                   onChange={(e) => setStep2Text(e.target.value)}
-                  className="w-full text-sm p-4 pt-12 rounded-xl border border-white/20 focus:outline-none focus:border-white/20 focus:ring-2 focus:ring-blue-100 bg-black/20 min-h-[400px] font-mono leading-relaxed"
+                  className="w-full text-sm p-4 pt-12 rounded-xl border border-white/20 focus:outline-none focus:border-white/20 focus:ring-2 focus:ring-blue-100 bg-black/20 h-56 min-h-[14rem] overflow-y-auto font-mono leading-relaxed"
                   placeholder="Text here..."
                 />
               </div>
@@ -1447,7 +1487,7 @@ ${textArray}`;
                 <textarea
                   value={step3Text}
                   onChange={(e) => setStep3Text(e.target.value)}
-                  className="w-full text-sm p-4 pt-12 rounded-xl border border-white/20 focus:outline-none focus:border-white/20 focus:ring-2 focus:ring-blue-100 bg-white/10 backdrop-blur-md/10 min-h-[400px] font-mono leading-relaxed"
+                  className="w-full text-sm p-4 pt-12 rounded-xl border border-white/20 focus:outline-none focus:border-white/20 focus:ring-2 focus:ring-blue-100 bg-white/10 backdrop-blur-md/10 h-56 min-h-[14rem] overflow-y-auto font-mono leading-relaxed"
                   placeholder="Translated text here..."
                 />
               </div>
@@ -1464,6 +1504,37 @@ ${textArray}`;
                 <audio controls src={downloadUrl} className="w-full" />
 
                 <div className="flex flex-col w-full gap-3 mt-2">
+                  <div className="w-full mb-2">
+                    <p className="text-xs font-bold text-white/80 mb-2">Video ပြုလုပ်မည့် ပုံစံရွေးချယ်ပါ (Render Mode)</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div
+                        onClick={() => setRenderMode('fast')}
+                        className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col gap-1 items-center justify-center text-center ${renderMode === 'fast'
+                            ? 'border-emerald-400 bg-emerald-900/30 shadow-[0_0_15px_rgba(52,211,153,0.3)]'
+                            : 'border-white/10 bg-[#0f172a] hover:bg-white/5 hover:border-white/20'
+                          }`}
+                      >
+                        <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-sm">
+                          <Zap className="w-4 h-4" /> Super Fast
+                        </div>
+                        <p className="text-[10px] text-white/60 leading-tight">စက္ကန့်ပိုင်းအတွင်း ချက်ချင်းပြီး</p>
+                      </div>
+
+                      <div
+                        onClick={() => setRenderMode('premium')}
+                        className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col gap-1 items-center justify-center text-center ${renderMode === 'premium'
+                            ? 'border-purple-400 bg-purple-900/30 shadow-[0_0_15px_rgba(168,85,247,0.3)]'
+                            : 'border-white/10 bg-[#0f172a] hover:bg-white/5 hover:border-white/20'
+                          }`}
+                      >
+                        <div className="flex items-center gap-1.5 text-purple-400 font-bold text-sm">
+                          <Sparkles className="w-4 h-4" /> Premium Sync
+                        </div>
+                        <p className="text-[10px] text-white/60 leading-tight">အသံနှင့်ရုပ် ကွက်တိဖြစ်စေရန် ညှိသည်</p>
+                      </div>
+                    </div>
+                  </div>
+
                   <a
                     href={downloadUrl}
                     target="_blank"
@@ -1623,31 +1694,47 @@ ${textArray}`;
           {step === 3 && (
             <div className="space-y-4">
               {/* Voice Selection */}
-              <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/20 shadow-sm flex flex-col gap-3">
-                <p className="font-bold text-white drop-shadow-md text-sm">အသံရွေးချယ်ရန် (Voice Selection):</p>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="voice"
-                      value="my-MM-NilarNeural"
-                      checked={selectedVoice === 'my-MM-NilarNeural'}
-                      onChange={(e) => setSelectedVoice(e.target.value)}
-                      className="w-4 h-4 text-blue-300 focus:ring-blue-400"
-                    />
-                    <span className="text-sm font-medium text-white">နီလာ (Nilar - Female)</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="voice"
-                      value="my-MM-ThihaNeural"
-                      checked={selectedVoice === 'my-MM-ThihaNeural'}
-                      onChange={(e) => setSelectedVoice(e.target.value)}
-                      className="w-4 h-4 text-blue-300 focus:ring-blue-400"
-                    />
-                    <span className="text-sm font-medium text-white">သီဟ (Thiha - Male)</span>
-                  </label>
+              <div className="flex flex-col gap-3">
+                <div className="grid grid-cols-2 gap-4">
+                  <div
+                    onClick={() => setSelectedVoice('my-MM-NilarNeural')}
+                    className={`p-4 rounded-2xl border flex flex-col items-center justify-center gap-2 cursor-pointer transition-all ${selectedVoice === 'my-MM-NilarNeural'
+                        ? 'border-blue-400 bg-blue-900/30 shadow-[0_0_15px_rgba(59,130,246,0.3)]'
+                        : 'border-white/10 bg-[#0f172a] hover:bg-white/5 hover:border-white/20'
+                      }`}
+                  >
+                    <div className="text-3xl mb-1">👩🏼‍💼</div>
+                    <div className="text-sm font-semibold text-white">Nilar • မိန်းကလေး</div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        new Audio('/assets/nilar_preview.mp3').play();
+                      }}
+                      className="mt-2 flex items-center gap-1.5 px-4 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-blue-400 rounded-full text-xs font-medium transition-colors border border-white/5"
+                    >
+                      <Play className="w-3 h-3" /> Preview
+                    </button>
+                  </div>
+
+                  <div
+                    onClick={() => setSelectedVoice('my-MM-ThihaNeural')}
+                    className={`p-4 rounded-2xl border flex flex-col items-center justify-center gap-2 cursor-pointer transition-all ${selectedVoice === 'my-MM-ThihaNeural'
+                        ? 'border-blue-400 bg-blue-900/30 shadow-[0_0_15px_rgba(59,130,246,0.3)]'
+                        : 'border-white/10 bg-[#0f172a] hover:bg-white/5 hover:border-white/20'
+                      }`}
+                  >
+                    <div className="text-3xl mb-1">👨🏼‍💼</div>
+                    <div className="text-sm font-semibold text-white">Thiha • ယောက်ျားလေး</div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        new Audio('/assets/thiha_preview.mp3').play();
+                      }}
+                      className="mt-2 flex items-center gap-1.5 px-4 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-blue-400 rounded-full text-xs font-medium transition-colors border border-white/5"
+                    >
+                      <Play className="w-3 h-3" /> Preview
+                    </button>
+                  </div>
                 </div>
               </div>
 
