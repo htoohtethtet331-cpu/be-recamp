@@ -675,17 +675,23 @@ function App() {
       };
 
       renderFfmpeg.on('progress', progressHandler);
-      const ret = await renderFfmpeg.exec(ffmpegArgs);
+      try {
+        await renderFfmpeg.exec(ffmpegArgs);
+      } catch (err) {
+        console.warn("Auto render exec threw (often benign Aborted at teardown):", err);
+      }
       renderFfmpeg.off('progress', progressHandler);
 
-      if (ret !== 0) {
-        throw new Error('Video rendering failed (FFmpeg exit code ' + ret + '). The video might be too large.');
+      let finalData;
+      try {
+        finalData = await renderFfmpeg.readFile('final_output.mp4');
+      } catch (err) {
+        throw new Error('Video rendering failed. The video might be too large or incompatible.');
       }
 
       setAutoProgress(100);
       setAutoStep(6); // Finished
 
-      const finalData = await renderFfmpeg.readFile('final_output.mp4');
       const finalUrl = URL.createObjectURL(new Blob([finalData.buffer], { type: 'video/mp4' }));
       setFinalVideoUrl(finalUrl);
 
@@ -794,9 +800,19 @@ function App() {
       await ffmpeg.writeFile('input_video.mp4', fileData);
 
       // Extract audio as mp3
-      await ffmpeg.exec(['-i', 'input_video.mp4', '-vn', '-c:a', 'libmp3lame', '-b:a', '128k', 'extracted_audio.mp3']);
+      try {
+        await ffmpeg.exec(['-i', 'input_video.mp4', '-vn', '-c:a', 'libmp3lame', '-b:a', '128k', 'extracted_audio.mp3']);
+      } catch (err) {
+        console.warn("Extract exec threw (benign Aborted):", err);
+      }
 
-      const audioData = await ffmpeg.readFile('extracted_audio.mp3');
+      let audioData;
+      try {
+        audioData = await ffmpeg.readFile('extracted_audio.mp3');
+      } catch (err) {
+        throw new Error('Audio extraction failed. File not generated.');
+      }
+      
       const audioBlob = new Blob([audioData.buffer], { type: 'audio/mp3' });
       const audioFile = new File([audioBlob], 'extracted_audio.mp3', { type: 'audio/mp3' });
 
@@ -968,11 +984,21 @@ function App() {
         'output.mp4'
       );
 
-      await renderFfmpeg.exec(ffmpegArgs);
+      try {
+        await renderFfmpeg.exec(ffmpegArgs);
+      } catch (err) {
+        console.warn("Manual render exec threw (often benign Aborted at teardown):", err);
+      }
 
       renderFfmpeg.off('progress', progressHandler);
 
-      const data = await renderFfmpeg.readFile('output.mp4');
+      let data;
+      try {
+        data = await renderFfmpeg.readFile('output.mp4');
+      } catch (err) {
+        throw new Error('Failed to retrieve rendered video. Output file not found.');
+      }
+      
       const finalBlob = new Blob([data.buffer], { type: 'video/mp4' });
       const finalUrl = URL.createObjectURL(finalBlob);
 
@@ -990,6 +1016,14 @@ function App() {
         videoUrl: finalUrl,
         error: ''
       });
+
+      // Auto-trigger download
+      const a = document.createElement('a');
+      a.href = finalUrl;
+      a.download = `RecapStudio_${Date.now()}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
 
     } catch (err) {
       console.error('Render error:', err);
@@ -1272,10 +1306,19 @@ ${textArray}`;
         'output_merged.mp4'
       );
 
-      await ffmpeg.exec(ffmpegArgs);
+      try {
+        await ffmpeg.exec(ffmpegArgs);
+      } catch (err) {
+        console.warn("Manual Mode merge exec threw (benign Aborted):", err);
+      }
 
       // 3. Read output and trigger download
-      const outputData = await ffmpeg.readFile('output_merged.mp4');
+      let outputData;
+      try {
+        outputData = await ffmpeg.readFile('output_merged.mp4');
+      } catch (err) {
+        throw new Error('Video merge failed. Output file not generated.');
+      }
       const outputBlob = new Blob([outputData.buffer], { type: 'video/mp4' });
       const url = URL.createObjectURL(outputBlob);
 
@@ -1933,13 +1976,28 @@ ${textArray}`;
                     </button>
 
                     <button
-                      onClick={() => handleDownloadVideo()}
+                      onClick={() => {
+                        if (backgroundTask.status === 'done' && backgroundTask.videoUrl) {
+                          const a = document.createElement('a');
+                          a.href = backgroundTask.videoUrl;
+                          a.download = `RecapStudio_${Date.now()}.mp4`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                        } else {
+                          handleDownloadVideo();
+                        }
+                      }}
                       disabled={backgroundTask.status === 'rendering' || loading}
                       className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold rounded-2xl shadow-lg hover:shadow-purple-500/30 transition-all flex items-center justify-center gap-3 disabled:opacity-50 text-lg mt-2"
                     >
                       {backgroundTask.status === 'rendering' ? (
                         <>
                           <Loader2 className="w-6 h-6 animate-spin" /> Rendering Video...
+                        </>
+                      ) : backgroundTask.status === 'done' ? (
+                        <>
+                          <CheckCircle2 className="w-6 h-6" /> Download Again
                         </>
                       ) : (
                         <>
