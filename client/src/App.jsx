@@ -380,6 +380,7 @@ function App() {
 
   // Wizard States
   const [step, setStep] = useState(1);
+  const [videoDuration, setVideoDuration] = useState(0);
   const [utterances, setUtterances] = useState([]);
   const [step2Text, setStep2Text] = useState('');
   const [step3Text, setStep3Text] = useState('');
@@ -579,7 +580,7 @@ function App() {
         pitch: `${finalPitch > 0 ? '+' : ''}${finalPitch}Hz`
       };
 
-      const ttsRes = await axios.post(`${apiUrl}/step3-tts`, { translatedUtterances, voice: voicePayload }, { headers: { Authorization: `Bearer ${token}` } });
+      const ttsRes = await axios.post(`${apiUrl}/step3-tts`, { translatedUtterances, voice: voicePayload, videoDuration }, { headers: { Authorization: `Bearer ${token}` } });
       const audioUrl = ttsRes.data.url;
 
       setAutoProgress(75);
@@ -608,6 +609,19 @@ function App() {
           seg.originalEnd > seg.originalStart + 0.001
       );
 
+      // Add a final segment for the remainder of the video if there's silence at the end
+      if (validSegs.length > 0) {
+        const videoDuration = await getVideoDuration(file);
+        const lastSeg = validSegs[validSegs.length - 1];
+        if (videoDuration - lastSeg.originalEnd > 0.1) {
+          validSegs.push({
+            originalStart: lastSeg.originalEnd,
+            originalEnd: null,
+            videoSpeed: 1.0
+          });
+        }
+      }
+
       let filterScript = '';
       const ffmpegArgs = [
         '-i', 'input_video.mp4',
@@ -622,7 +636,11 @@ function App() {
         // Trim + setpts each segment per CLAUDE.md spec
         const segLabels = validSegs.map((seg, i) => {
           const speed = typeof seg.videoSpeed === 'number' && seg.videoSpeed > 0 ? seg.videoSpeed : 1.0;
-          filterScript += `[s${i}]trim=${seg.originalStart.toFixed(4)}:${seg.originalEnd.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[v${i}];\n`;
+          if (seg.originalEnd === null) {
+            filterScript += `[s${i}]trim=start=${seg.originalStart.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[v${i}];\n`;
+          } else {
+            filterScript += `[s${i}]trim=${seg.originalStart.toFixed(4)}:${seg.originalEnd.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[v${i}];\n`;
+          }
           return `[v${i}]`;
         });
 
@@ -633,7 +651,11 @@ function App() {
         // Single segment — no split needed
         const seg = validSegs[0];
         const speed = typeof seg.videoSpeed === 'number' && seg.videoSpeed > 0 ? seg.videoSpeed : 1.0;
-        filterScript += `[0:v]trim=${seg.originalStart.toFixed(4)}:${seg.originalEnd.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[outv]\n`;
+        if (seg.originalEnd === null) {
+          filterScript += `[0:v]trim=start=${seg.originalStart.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[outv]\n`;
+        } else {
+          filterScript += `[0:v]trim=${seg.originalStart.toFixed(4)}:${seg.originalEnd.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[outv]\n`;
+        }
 
       } else {
         // No segments at all — pass video through as-is
@@ -743,6 +765,7 @@ function App() {
           setFile(null);
         } else {
           setFile(selectedFile);
+          setVideoDuration(media.duration);
           setError('');
           resetFlow();
         }
@@ -980,7 +1003,7 @@ function App() {
 
       ffmpegArgs.push(
         '-c:a', 'aac',
-        '-shortest',
+        // '-shortest', // Removed so it plays until the video ends
         'output.mp4'
       );
 
@@ -1218,7 +1241,8 @@ ${textArray}`;
       const token = localStorage.getItem('token');
       const response = await axios.post(`${apiUrl}/step3-tts`, {
         translatedUtterances: updatedUtterances,
-        voice: voicePayload
+        voice: voicePayload,
+        videoDuration
       }, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
@@ -1285,7 +1309,11 @@ ${textArray}`;
       } else if (validSegs.length === 1) {
         const seg = validSegs[0];
         const speed = typeof seg.videoSpeed === 'number' && seg.videoSpeed > 0 ? seg.videoSpeed : 1.0;
-        filterScript += `[0:v]trim=${seg.originalStart.toFixed(4)}:${seg.originalEnd.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[outv]\n`;
+        if (seg.originalEnd === null) {
+          filterScript += `[0:v]trim=start=${seg.originalStart.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[outv]\n`;
+        } else {
+          filterScript += `[0:v]trim=${seg.originalStart.toFixed(4)}:${seg.originalEnd.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[outv]\n`;
+        }
 
       } else {
         // No video segments — pass video through as-is
@@ -1629,7 +1657,7 @@ ${textArray}`;
 
         {/* Background Task Floating Indicator */}
         {backgroundTask.status !== 'idle' && (
-          <div className="absolute top-4 left-4 z-50 flex items-center bg-white/10 backdrop-blur-md/95 backdrop-blur-md shadow-2xl border border-white/20/50 rounded-full pl-2 pr-5 py-2.5 gap-4 transition-all duration-500 hover:scale-105">
+          <div className="fixed top-4 left-4 z-[100] flex items-center bg-[#1e293b]/90 backdrop-blur-md shadow-2xl border border-white/20 rounded-full pl-2 pr-5 py-2.5 gap-4 transition-all duration-500 hover:scale-105">
             {backgroundTask.status === 'rendering' && (
               <>
                 <div className="relative w-10 h-10 flex items-center justify-center">

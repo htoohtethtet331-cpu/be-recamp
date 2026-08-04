@@ -94,7 +94,18 @@ async function callGeminiWithRetry(apiKey, prompt, retries = 3) {
       content = jsonMatch[0];
     }
 
-    return content;
+    // Validate JSON before returning. If invalid, retry automatically.
+    try {
+      JSON.parse(content);
+      return content;
+    } catch (e) {
+      if (attempt < retries) {
+        console.warn(`[Gemini] Invalid JSON string on attempt ${attempt + 1}. Retrying...`);
+        await sleep(2000);
+        continue;
+      }
+      throw new Error(`Invalid JSON format after ${retries} retries: ${e.message}`);
+    }
   }
 }
 

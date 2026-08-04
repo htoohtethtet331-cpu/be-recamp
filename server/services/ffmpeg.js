@@ -39,7 +39,7 @@ const runFfmpeg = (args) => {
   });
 };
 
-const mixAudioOnly = async (utterances, outputDir) => {
+const mixAudioOnly = async (utterances, outputDir, videoDuration) => {
   const finalAudioPath = path.join(outputDir, `final_audio_${Date.now()}.mp3`);
 
   const MAX_AUDIO_SPEED = 1.15; // nudge voice tempo up to 1.15x max
@@ -127,6 +127,22 @@ const mixAudioOnly = async (utterances, outputDir) => {
     lastOriginalEnd = u.end / 1000;
   }
 
+  // ── Final Step: Handle gap after the last utterance ──
+  if (videoDuration && videoDuration > lastOriginalEnd) {
+    const remainingDur = videoDuration - lastOriginalEnd;
+    if (remainingDur > 0) {
+      videoSegments.push({
+        originalStart: lastOriginalEnd,
+        originalEnd: videoDuration,
+        newDuration: remainingDur,
+        videoSpeed: 1.0,
+        isGap: true,
+        audioFilePath: null,
+      });
+      currentNewTime += remainingDur;
+    }
+  }
+
   // ── Step 2: render each segment to its own padded mp3 ─────────────────────
   // CLAUDE.md: "N matching segments (voice, tempo-adjusted, padded to the same length)"
   // Segments are independent — render them in parallel for speed
@@ -137,7 +153,7 @@ const mixAudioOnly = async (utterances, outputDir) => {
   const RENDER_CONCURRENCY = 4;
 
   const renderSegment = async (seg, i) => {
-    const segOut = path.join(outputDir, `seg_${i}_${Math.random().toString(36).slice(2,7)}.mp3`);
+    const segOut = path.join(outputDir, `seg_${i}_${Math.random().toString(36).slice(2, 7)}.mp3`);
 
     if (seg.isGap || !seg.audioFilePath || !fs.existsSync(seg.audioFilePath)) {
       // Pure silence for gap duration
@@ -214,7 +230,7 @@ const mixAudioOnly = async (utterances, outputDir) => {
   }
 
   // Cleanup segment tmp files
-  segmentFiles.forEach(f => { try { fs.unlinkSync(f); } catch (_) {} });
+  segmentFiles.forEach(f => { try { fs.unlinkSync(f); } catch (_) { } });
 
   // Only return non-gap segments to frontend for video retiming.
   // Gap segments are handled in audio only (silence); video between utterances

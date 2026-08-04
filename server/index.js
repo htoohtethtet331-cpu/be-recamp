@@ -360,7 +360,7 @@ app.post('/api/step3-tts', requireAuth, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (user.role === 'restrict') return res.status(403).json({ error: 'သင့်အကောင့်ကို ပိတ်ပင်ထားပါသည်။ (Your account has been restricted.)' });
 
-    const { translatedUtterances, voice } = req.body;
+    const { translatedUtterances, voice, videoDuration } = req.body;
     if (!translatedUtterances || !Array.isArray(translatedUtterances)) {
       return res.status(400).json({ error: 'Invalid translatedUtterances array provided' });
     }
@@ -379,7 +379,7 @@ app.post('/api/step3-tts', requireAuth, async (req, res) => {
     const utterancesWithAudio = await generateTTSForUtterances(translatedUtterances, ttsOutputDir, voice);
     
     console.log(`[Step 3] Mixing audio tracks...`);
-    const { finalAudioPath, completeVideoSegments, updatedUtterances: finalUtterances } = await mixAudioOnly(utterancesWithAudio, ttsOutputDir);
+    const { finalAudioPath, completeVideoSegments, updatedUtterances: finalUtterances } = await mixAudioOnly(utterancesWithAudio, ttsOutputDir, videoDuration);
     
     console.log(`[Step 3] Skipping Cloudinary upload, using local URL to speed up...`);
     const baseUrl = req.protocol + '://' + req.get('host');
