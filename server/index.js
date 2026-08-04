@@ -87,12 +87,6 @@ app.post('/api/auth/google', async (req, res) => {
       const role = email === 'tiktokjaxon709@gmail.com' ? 'admin' : 'free';
       user = await User.create({ name, email, picture, role });
     } else {
-      // Auto-downgrade premium users if out of limit
-      if (user.role === 'premium' && user.videoLimit <= 0) {
-        user.role = 'free';
-        user.videoLimit = 0;
-        await user.save();
-      }
     }
 
     // Generate JWT
@@ -115,12 +109,7 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     
-    // Auto-downgrade premium user if limit is 0
-    if (user.role === 'premium' && user.videoLimit <= 0) {
-      user.role = 'free';
-      user.videoLimit = 0;
-      await user.save();
-    }
+    // No auto-downgrade here to prevent breaking mid-video state
     
     // Create a fresh token in case role changed
     const freshToken = jwt.sign(
@@ -248,7 +237,10 @@ app.post('/api/step1-extract', requireAuth, upload.single('audio'), async (req, 
       }
     } else if (user.role === 'premium') {
       if (user.videoLimit <= 0) {
-        return res.status(403).json({ error: 'Video limit reached. You have 0 credits remaining.' });
+        user.role = 'free';
+        user.videoLimit = 0;
+        await user.save();
+        return res.status(403).json({ error: 'Video limit reached. You have been downgraded to the Free plan. Please provide your own API key to use free videos.' });
       }
     }
 
@@ -294,10 +286,7 @@ app.post('/api/step1-extract', requireAuth, upload.single('audio'), async (req, 
       await user.save();
     } else if (user.role === 'premium') {
       user.videoLimit -= 1;
-      if (user.videoLimit <= 0) {
-        user.role = 'free';
-        user.videoLimit = 0;
-      }
+      // Do not downgrade here, so they can finish step 2 and 3 of this video as premium
       remainingLimit = user.videoLimit;
       await user.save();
     } else {
