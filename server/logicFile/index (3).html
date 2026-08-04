@@ -1,0 +1,1703 @@
+<title>Recap Studio</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          brand: {
+            DEFAULT: '#3b6fe0',
+            light: '#7dc4f5',
+            dark: '#2f57b3',
+          },
+        },
+        fontFamily: {
+          sans: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'SF Pro Text', 'system-ui', 'Segoe UI', 'Inter', 'sans-serif'],
+        },
+      },
+    },
+  };
+</script>
+<style>
+  :root {
+    --glass-border: rgba(255,255,255,0.65);
+    --glass-shadow: 0 24px 70px -20px rgba(31,58,110,0.22), 0 2px 10px -2px rgba(31,58,110,0.08);
+  }
+
+  html { -webkit-font-smoothing: antialiased; }
+
+  body {
+    background:
+      radial-gradient(1000px 620px at 10% -10%, rgba(125,196,245,0.38), transparent 60%),
+      radial-gradient(900px 620px at 105% 10%, rgba(59,111,224,0.16), transparent 55%),
+      radial-gradient(700px 500px at 50% 115%, rgba(125,196,245,0.22), transparent 60%),
+      linear-gradient(180deg, #f5f9ff 0%, #eef3fc 55%, #eef4fd 100%);
+    background-attachment: fixed;
+    letter-spacing: -0.01em;
+  }
+
+  h1, h2, h3 { letter-spacing: -0.015em; }
+
+  /* ---------- core glass surfaces ---------- */
+  .glass-panel {
+    background: rgba(255,255,255,0.58);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    box-shadow: var(--glass-shadow);
+  }
+  .glass-panel-soft {
+    background: rgba(255,255,255,0.55);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid rgba(255,255,255,0.6);
+    border-radius: 20px;
+    box-shadow: 0 14px 34px -12px rgba(31,58,110,0.16);
+    transition: transform 250ms ease, box-shadow 250ms ease, background 250ms ease;
+  }
+  .glass-bar {
+    background: rgba(255,255,255,0.55);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    backdrop-filter: blur(24px) saturate(180%);
+    border-bottom: 1px solid rgba(255,255,255,0.55);
+  }
+
+  /* ---------- brand ---------- */
+  .brand-gradient {
+    background-image: linear-gradient(135deg, #3b6fe0 0%, #5f96ef 50%, #7dc4f5 100%);
+    transition: transform 220ms cubic-bezier(.2,.8,.2,1), box-shadow 220ms ease, opacity 220ms ease, filter 220ms ease;
+  }
+  a.brand-gradient, button.brand-gradient, #startBtn, #loadUrlBtn, #coverSubtitleBtn {
+    box-shadow: 0 6px 20px -6px rgba(59,111,224,0.5), inset 0 1px 0 rgba(255,255,255,0.35);
+  }
+  a.brand-gradient:hover, button.brand-gradient:hover, #startBtn:not(:disabled):hover, #loadUrlBtn:not(:disabled):hover, #coverSubtitleBtn:hover {
+    transform: translateY(-2px) scale(1.012);
+    box-shadow: 0 12px 32px -8px rgba(59,111,224,0.55), inset 0 1px 0 rgba(255,255,255,0.45);
+    filter: brightness(1.03);
+  }
+  a.brand-gradient:active, button.brand-gradient:active, #startBtn:not(:disabled):active, #coverSubtitleBtn:active {
+    transform: translateY(0) scale(0.99);
+  }
+  .brand-gradient-text {
+    background-image: linear-gradient(90deg, #2f57b3 0%, #3b6fe0 55%, #62a4f2 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* ---------- smooth transitions everywhere ---------- */
+  button, select, input, a, .toggle-knob, .toggle-switch {
+    transition: color 220ms ease, background 220ms ease, background-color 220ms ease, border-color 220ms ease,
+      box-shadow 220ms ease, transform 220ms ease, opacity 220ms ease, filter 220ms ease;
+  }
+
+  /* ---------- tabs: frosted pill ---------- */
+  .tab-btn { border-radius: 9999px !important; border: 1px solid transparent; }
+  .tab-btn:hover:not(.active) { color: #3b6fe0; background: rgba(255,255,255,0.55); }
+  .tab-btn.active {
+    color: #1d4595;
+    background: rgba(255,255,255,0.8);
+    border-color: rgba(255,255,255,0.85);
+    box-shadow: 0 6px 18px -6px rgba(59,111,224,0.4), inset 0 1px 0 rgba(255,255,255,0.9);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+  }
+
+  /* ---------- mode / segmented buttons ---------- */
+  .mode-btn, .seg-btn {
+    background: rgba(255,255,255,0.4);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+  .mode-btn:hover:not(.active) { border-color: #3b6fe0; background: rgba(255,255,255,0.7); transform: translateY(-1px); }
+  .mode-btn.active {
+    background-image: linear-gradient(135deg, #3b6fe0 0%, #7dc4f5 100%);
+    color: white;
+    border-color: transparent;
+    box-shadow: 0 10px 26px -6px rgba(59,111,224,0.45), inset 0 1px 0 rgba(255,255,255,0.3);
+  }
+  .seg-btn:hover:not(.active) { border-color: #3b6fe0; background: rgba(255,255,255,0.75); }
+  .seg-btn.active {
+    background-image: linear-gradient(135deg, #3b6fe0 0%, #7dc4f5 100%);
+    color: white;
+    border-color: transparent;
+    box-shadow: 0 6px 18px -6px rgba(59,111,224,0.4);
+  }
+
+  /* ---------- stage progress icons ---------- */
+  .stage-row-icon {
+    width: 22px; height: 22px; border-radius: 9999px; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; font-size: 12px; font-weight: 700; transition: all 0.3s;
+  }
+  .stage-row-icon.pending { background: rgba(148,163,184,0.18); color: #94a3b8; }
+  .stage-row-icon.active {
+    background-image: linear-gradient(135deg, #3b6fe0, #7dc4f5); color: white;
+    box-shadow: 0 4px 14px rgba(59,111,224,0.4);
+    animation: pulse-ring 1.4s ease-in-out infinite;
+  }
+  .stage-row-icon.done { background: rgba(22,163,74,0.14); color: #16a34a; }
+  @keyframes pulse-ring { 0%, 100% { box-shadow: 0 0 0 0 rgba(59,111,224,0.4); } 50% { box-shadow: 0 0 0 6px rgba(59,111,224,0); } }
+
+  /* ---------- history cards ---------- */
+  .history-card { transition: box-shadow 250ms ease, transform 250ms ease, background 250ms ease; }
+  .history-card:hover { box-shadow: 0 18px 44px -10px rgba(59,111,224,0.28); transform: translateY(-3px); }
+
+  /* ---------- upload dropzone ---------- */
+  .dropzone {
+    background: rgba(255,255,255,0.35);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    transition: all 220ms ease;
+  }
+  .dropzone:hover { background: rgba(255,255,255,0.6); border-color: rgba(59,111,224,0.45); }
+  .dropzone.drag-over {
+    border-color: #3b6fe0;
+    background: rgba(59,111,224,0.08);
+    transform: scale(1.008);
+  }
+
+  /* ---------- toggle switch ---------- */
+  .toggle-switch {
+    width: 44px; height: 24px; border-radius: 9999px; background: rgba(148,163,184,0.35);
+    position: relative; flex-shrink: 0; cursor: pointer; border: none;
+    box-shadow: inset 0 1px 2px rgba(31,41,73,0.12);
+  }
+  .toggle-switch[data-on="true"] {
+    background-image: linear-gradient(135deg, #3b6fe0, #7dc4f5);
+    box-shadow: 0 2px 12px rgba(59,111,224,0.45);
+  }
+  .toggle-knob {
+    position: absolute; top: 2px; left: 2px; width: 20px; height: 20px;
+    border-radius: 9999px; background: white; transition: left 220ms ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.4) inset;
+  }
+  .toggle-switch[data-on="true"] .toggle-knob { left: 22px; }
+
+  /* ---------- glass inputs / selects ---------- */
+  .glass-input {
+    background: rgba(255,255,255,0.55) !important;
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    border-color: rgba(255,255,255,0.7) !important;
+  }
+  .glass-input:hover { background: rgba(255,255,255,0.72) !important; }
+  .glass-input:focus { background: rgba(255,255,255,0.85) !important; }
+
+  /* ---------- premium range sliders ---------- */
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    height: 6px; border-radius: 9999px; outline: none;
+    background: linear-gradient(90deg, #3b6fe0 0%, #7dc4f5 var(--range-progress, 50%), rgba(148,163,184,0.3) var(--range-progress, 50%));
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 18px; height: 18px; border-radius: 9999px;
+    background: radial-gradient(circle at 35% 30%, #ffffff 0%, #eaf2ff 45%, #ffffff 100%);
+    border: 2px solid #3b6fe0;
+    box-shadow: 0 2px 8px rgba(59,111,224,0.45), 0 0 0 4px rgba(59,111,224,0.12);
+    cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 18px; height: 18px; border-radius: 9999px;
+    background: radial-gradient(circle at 35% 30%, #ffffff 0%, #eaf2ff 45%, #ffffff 100%);
+    border: 2px solid #3b6fe0;
+    box-shadow: 0 2px 8px rgba(59,111,224,0.45), 0 0 0 4px rgba(59,111,224,0.12);
+    cursor: pointer;
+  }
+  input[type=range]::-moz-range-track { background: rgba(148,163,184,0.3); border-radius: 9999px; height: 6px; }
+
+  #subtitleBox {
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    padding: 2px 6px; overflow: hidden;
+  }
+  .resize-handle {
+    width: 12px; height: 12px; background: #3b6fe0; border: 2px solid white; border-radius: 3px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: rgba(59,111,224,0.35); border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(59,111,224,0.55); }
+
+  /* ---------- soften flat borders/fills to sit on glass ---------- */
+  .border-slate-100 { border-color: rgba(255,255,255,0.55) !important; }
+  .border-slate-200 { border-color: rgba(148,163,184,0.4) !important; }
+  .border-slate-300 { border-color: rgba(148,163,184,0.55) !important; }
+  .bg-slate-50 { background: rgba(255,255,255,0.4) !important; }
+</style>
+
+<body class="min-h-screen font-sans text-slate-700 antialiased">
+
+  <!-- Header -->
+  <header class="glass-bar sticky top-0 z-40 flex items-center justify-between px-8 py-5">
+    <div>
+      <h1 class="text-2xl font-extrabold brand-gradient-text leading-tight">Recap Studio</h1>
+      <p class="text-xs font-medium tracking-wide text-slate-400 uppercase">THET x DeepLearn AI</p>
+    </div>
+    <div class="flex items-center gap-4">
+      <div id="serverPill" class="flex items-center gap-2 text-xs text-slate-400">
+        <span class="h-2 w-2 rounded-full bg-brand-light"></span>
+        localhost:8000
+      </div>
+      <button id="resetAllBtn" class="flex items-center gap-1.5 text-sm font-semibold text-slate-500 border border-slate-200/70 rounded-full px-4 py-1.5 hover:border-brand hover:text-brand hover:bg-white/60 transition">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+        </svg>
+        Reset / New Video
+      </button>
+    </div>
+  </header>
+
+  <!-- Main layout -->
+  <main class="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-6 p-6 max-w-[1600px] mx-auto">
+
+    <!-- LEFT: MAIN CANVAS -->
+    <section class="glass-panel p-5 flex flex-col min-h-[560px]">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-bold tracking-widest text-slate-400 uppercase">Main Canvas</h2>
+      </div>
+
+      <!-- View: empty / no file yet -->
+      <div id="view-empty" class="flex-1 flex flex-col items-center justify-center text-center text-slate-400 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50">
+        <svg class="w-14 h-14 mb-3 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+        </svg>
+        <p class="font-medium">No video loaded yet</p>
+        <p class="text-sm">Use the Source tab on the right to add one</p>
+      </div>
+
+      <!-- View: preview (upload chosen, not processing yet) -->
+      <div id="view-preview" class="hidden mx-auto relative rounded-xl overflow-hidden bg-black">
+        <video id="previewVideo" class="w-full h-full object-contain bg-black" controls></video>
+        <span id="resBadge" class="absolute top-3 right-3 px-2 py-1 rounded-md bg-black/60 text-white text-xs font-semibold tracking-wide">1080P</span>
+        <span id="timecode" class="absolute bottom-3 left-3 px-2 py-1 rounded-md bg-black/60 text-white text-xs font-mono">00:00 / 00:00</span>
+
+        <!-- Draggable overlay layer -->
+        <div id="canvasOverlay" class="absolute inset-0 pointer-events-none">
+          <div id="subtitleBox" class="hidden absolute border-2 border-brand bg-brand/10 rounded pointer-events-auto cursor-move">
+            <span id="subtitleBoxSample" class="text-white text-xs font-bold" style="text-shadow:0 1px 2px rgba(0,0,0,0.8);">Sample Burmese caption</span>
+            <div class="resize-handle absolute cursor-ew-resize" style="right:-6px;bottom:-6px;"></div>
+          </div>
+          <!-- blur box overlays injected here by JS -->
+        </div>
+      </div>
+
+      <!-- View: processing engine -->
+      <div id="view-processing" class="hidden flex-1 flex flex-col items-center justify-center gap-8">
+        <div class="relative w-48 h-48">
+          <svg class="w-48 h-48 -rotate-90" viewBox="0 0 120 120">
+            <defs>
+              <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#3b6fe0" />
+                <stop offset="100%" stop-color="#7dc4f5" />
+              </linearGradient>
+            </defs>
+            <circle cx="60" cy="60" r="52" fill="none" stroke="#e6ecf9" stroke-width="10" />
+            <circle id="ringProgress" cx="60" cy="60" r="52" fill="none" stroke="url(#ringGradient)"
+                    stroke-width="10" stroke-linecap="round" style="transition: stroke-dashoffset 0.6s ease"
+                    stroke-dasharray="326.7" stroke-dashoffset="326.7" />
+          </svg>
+          <div class="absolute inset-0 flex flex-col items-center justify-center">
+            <span id="ringPercent" class="text-3xl font-extrabold text-slate-700">0%</span>
+            <span id="etaText" class="text-xs text-slate-400 mt-1">estimating…</span>
+          </div>
+        </div>
+
+        <div id="stageList" class="flex flex-col gap-2.5 w-full max-w-[260px]">
+          <!-- rows injected by JS -->
+        </div>
+
+        <button id="cancelBtn" class="px-5 py-2 rounded-lg border border-slate-300 text-slate-500 font-medium hover:border-slate-400 hover:bg-slate-50 transition">
+          Cancel Job
+        </button>
+      </div>
+
+      <!-- View: done -->
+      <div id="view-done" class="hidden flex-1 flex flex-col gap-4">
+        <div class="flex-1 relative rounded-xl overflow-hidden bg-black">
+          <video id="resultVideo" class="w-full h-full object-contain bg-black" controls></video>
+        </div>
+        <div class="flex gap-3">
+          <a id="downloadMp4" class="flex-1 text-center px-4 py-3 rounded-xl brand-gradient text-white font-semibold shadow-md shadow-brand/30 hover:opacity-95 transition" download>
+            Download MP4
+          </a>
+          <a id="downloadSrt" class="flex-1 text-center px-4 py-3 rounded-xl border border-brand text-brand font-semibold hover:bg-blue-50 transition" download>
+            Download SRT
+          </a>
+        </div>
+      </div>
+
+      <!-- View: failed -->
+      <div id="view-failed" class="hidden flex-1 flex flex-col items-center justify-center gap-3 text-center">
+        <svg class="w-12 h-12 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+        </svg>
+        <p class="font-semibold text-slate-600">Job did not finish</p>
+        <p id="failText" class="text-sm text-slate-400 max-w-sm"></p>
+        <button id="resetBtn" class="mt-2 px-5 py-2 rounded-lg border border-slate-300 text-slate-500 font-medium hover:bg-slate-50 transition">
+          Back to Source
+        </button>
+      </div>
+    </section>
+
+    <!-- RIGHT: PROPERTIES -->
+    <section class="glass-panel flex flex-col min-h-[560px] max-h-[calc(100vh-140px)]">
+      <h2 class="text-sm font-bold tracking-widest text-slate-400 uppercase px-5 pt-5">Properties</h2>
+
+      <!-- Tabs -->
+      <div class="flex gap-1.5 px-4 pt-4 pb-2 border-b border-slate-100/70">
+        <button data-tab="source" class="tab-btn active text-sm font-semibold px-4 py-2 text-slate-500">Source</button>
+        <button data-tab="voice" class="tab-btn text-sm font-semibold px-4 py-2 text-slate-500">Voice</button>
+        <button data-tab="subtitles" class="tab-btn text-sm font-semibold px-4 py-2 text-slate-500">Subtitles</button>
+        <button data-tab="advanced" class="tab-btn text-sm font-semibold px-4 py-2 text-slate-500">Advanced</button>
+      </div>
+
+      <div class="p-5 flex-1 flex flex-col overflow-y-auto">
+
+        <!-- Tab: Source -->
+        <div data-panel="source" class="flex flex-col gap-5">
+          <div>
+            <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Video file</label>
+            <div id="dropzone" class="dropzone mt-2 border-2 border-dashed border-slate-200 rounded-xl p-6 text-center cursor-pointer transition">
+              <svg class="w-8 h-8 mx-auto mb-2 text-brand" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              <p class="text-sm font-medium text-slate-600">Drop a video here, or click to browse</p>
+              <p class="text-xs text-slate-400 mt-1">MP4, MOV, or any video ffmpeg can read</p>
+              <input id="fileInput" type="file" accept="video/*" class="hidden" />
+            </div>
+            <p id="uploadStatus" class="text-xs text-slate-400 mt-2"></p>
+          </div>
+
+          <div>
+            <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Or paste a link (YouTube / TikTok / FB / IG)</label>
+            <div class="flex gap-2 mt-2">
+              <input id="videoUrlInput" type="text" placeholder="https://..."
+                     class="glass-input flex-1 min-w-0 rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand/40" />
+              <button id="loadUrlBtn" class="text-sm font-semibold text-white brand-gradient rounded-xl px-4 py-2.5 shadow-sm shadow-brand/30 hover:opacity-95 transition disabled:opacity-40">
+                Load
+              </button>
+            </div>
+            <p id="urlStatus" class="text-xs text-slate-400 mt-2"></p>
+          </div>
+
+          <div>
+            <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Processing mode</label>
+            <div class="grid grid-cols-1 gap-2 mt-2">
+              <button data-mode="subtitle_only" class="mode-btn text-sm font-semibold px-4 py-3 rounded-xl border border-slate-200 text-slate-600 text-left transition">
+                Subtitle Only
+                <span class="block text-xs font-normal opacity-80 mt-0.5">Burmese subtitles burned in, original audio kept, no voice</span>
+              </button>
+              <button data-mode="ai_recap" class="mode-btn text-sm font-semibold px-4 py-3 rounded-xl border border-slate-200 text-slate-600 text-left transition">
+                AI Recap
+                <span class="block text-xs font-normal opacity-80 mt-0.5">One flowing Burmese narration track over the whole video</span>
+              </button>
+              <button data-mode="dubbing" class="mode-btn active text-sm font-semibold px-4 py-3 rounded-xl border border-slate-200 text-left transition">
+                Dubbing
+                <span class="block text-xs font-normal opacity-80 mt-0.5">Scene-anchored, dialogue kept as dialogue</span>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Aspect / crop</label>
+            <select id="aspectSelect" class="glass-input mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand/40">
+              <option value="original">Original</option>
+              <option value="9:16">9:16 (Vertical / TikTok)</option>
+              <option value="3:4">3:4</option>
+              <option value="1:1">1:1 (Square)</option>
+              <option value="custom">Custom…</option>
+            </select>
+
+            <div id="aspectCustomControls" class="hidden mt-2 flex items-center gap-2">
+              <input id="aspectCustomW" type="number" min="1" value="4"
+                     class="glass-input w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 text-center focus:outline-none focus:ring-2 focus:ring-brand/40" />
+              <span class="text-slate-400 font-bold">:</span>
+              <input id="aspectCustomH" type="number" min="1" value="5"
+                     class="glass-input w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 text-center focus:outline-none focus:ring-2 focus:ring-brand/40" />
+            </div>
+
+            <div id="aspectModeControls" class="hidden grid grid-cols-2 gap-2 mt-2">
+              <button data-aspect-mode="fill" class="seg-btn active text-sm font-semibold px-3 py-2.5 rounded-xl border border-slate-200 text-slate-600 transition">
+                Fill
+                <span class="block text-[11px] font-normal opacity-80">Cover + crop, no bars</span>
+              </button>
+              <button data-aspect-mode="fit" class="seg-btn text-sm font-semibold px-3 py-2.5 rounded-xl border border-slate-200 text-slate-600 transition">
+                Fit
+                <span class="block text-[11px] font-normal opacity-80">Contain + black bars</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: Voice -->
+        <div data-panel="voice" class="hidden flex-col gap-6">
+
+          <div>
+            <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Voice model</label>
+            <button id="chooseVoiceBtn" class="mt-2 w-full flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 hover:border-brand transition text-left">
+              <span>
+                <span id="chosenVoiceName" class="block text-sm font-semibold text-slate-700">Thiha</span>
+                <span class="block text-xs text-slate-400">my-MM-ThihaNeural</span>
+              </span>
+              <svg class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Voice speed</label>
+              <span id="speedLabel" class="text-sm font-bold text-brand">1.30x <span class="text-slate-400 font-normal">(+30%)</span></span>
+            </div>
+            <input id="speedSlider" type="range" min="0.85" max="2.0" step="0.01" value="1.30"
+                   class="mt-2 w-full accent-brand" />
+            <div class="flex justify-between text-xs text-slate-400 mt-1">
+              <span>0.85x</span>
+              <span>2.0x</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Recap length</label>
+              <select id="lengthSelect" class="glass-input mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand/40">
+                <option value="standard" selected>Standard</option>
+                <option value="short">Short</option>
+                <option value="detailed">Detailed</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Tone</label>
+              <select id="toneSelect" class="glass-input mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand/40">
+                <option value="conversational" selected>Conversational</option>
+                <option value="dramatic">Dramatic</option>
+                <option value="neutral">Neutral</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Watermark</label>
+            <input id="watermarkInput" type="text" placeholder="@YourChannel"
+                   class="glass-input mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand/40" />
+            <p class="text-xs text-slate-400 mt-1">Stored for now - used when the caption/branding overlay is added.</p>
+          </div>
+        </div>
+
+        <!-- Tab: Subtitles -->
+        <div data-panel="subtitles" class="hidden flex-col gap-5">
+
+          <!-- Master toggle -->
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Burmese captions</label>
+              <p class="text-xs text-slate-400 mt-0.5">Master on/off</p>
+            </div>
+            <button id="subtitlesToggle" class="toggle-switch" data-on="true"><span class="toggle-knob"></span></button>
+          </div>
+
+          <div id="subtitleControls" class="flex flex-col gap-5">
+            <div>
+              <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Mode</label>
+              <div class="grid grid-cols-2 gap-2 mt-2">
+                <button data-sub-mode="burn" class="seg-btn active text-sm font-semibold px-3 py-2.5 rounded-xl border border-slate-200 text-slate-600 transition">Burn (Hardsub)</button>
+                <button data-sub-mode="file" class="seg-btn text-sm font-semibold px-3 py-2.5 rounded-xl border border-slate-200 text-slate-600 transition">File (.srt)</button>
+              </div>
+            </div>
+
+            <div>
+              <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Font</label>
+              <select id="subFont" class="glass-input mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand/40">
+                <option value="Noto Sans Myanmar" selected>Noto Sans Myanmar</option>
+              </select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Font size</label>
+                <select id="subFontSize" class="glass-input mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand/40">
+                  <option value="small">Small</option>
+                  <option value="medium" selected>Medium</option>
+                  <option value="large">Large</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Color</label>
+                <select id="subColor" class="glass-input mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand/40">
+                  <option value="white" selected>White</option>
+                  <option value="yellow">Yellow</option>
+                  <option value="black">Black</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Position</label>
+              <div class="grid grid-cols-3 gap-2 mt-2">
+                <button data-sub-pos="bottom" class="seg-btn active text-sm font-semibold px-3 py-2.5 rounded-xl border border-slate-200 text-slate-600 transition">Bottom</button>
+                <button data-sub-pos="middle" class="seg-btn text-sm font-semibold px-3 py-2.5 rounded-xl border border-slate-200 text-slate-600 transition">Middle</button>
+                <button data-sub-pos="custom" class="seg-btn text-sm font-semibold px-3 py-2.5 rounded-xl border border-slate-200 text-slate-600 transition">Custom</button>
+              </div>
+            </div>
+
+            <div id="customPosControls" class="hidden flex-col gap-3 rounded-xl border border-slate-200 p-3 bg-slate-50">
+              <p class="text-xs text-slate-400">Drag the box on the preview, or use the sliders.</p>
+              <div>
+                <div class="flex justify-between text-xs text-slate-500"><span>X</span><span id="subXVal">10%</span></div>
+                <input id="subXSlider" type="range" min="0" max="95" value="10" class="w-full accent-brand" />
+              </div>
+              <div>
+                <div class="flex justify-between text-xs text-slate-500"><span>Y</span><span id="subYVal">78%</span></div>
+                <input id="subYSlider" type="range" min="0" max="95" value="78" class="w-full accent-brand" />
+              </div>
+              <div>
+                <div class="flex justify-between text-xs text-slate-500"><span>Width</span><span id="subWVal">80%</span></div>
+                <input id="subWSlider" type="range" min="10" max="100" value="80" class="w-full accent-brand" />
+              </div>
+            </div>
+
+            <div>
+              <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Background style</label>
+              <select id="subBackground" class="glass-input mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand/40">
+                <option value="none" selected>None</option>
+                <option value="transparent">Transparent</option>
+                <option value="solid">Solid Box</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Blur Mask -->
+          <div class="border-t border-slate-100 pt-5 flex flex-col gap-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Blur Mask (max 3)</label>
+                <p class="text-xs text-slate-400 mt-0.5">Hide the original burned-in caption</p>
+              </div>
+              <button id="blurToggle" class="toggle-switch" data-on="false"><span class="toggle-knob"></span></button>
+            </div>
+
+            <button id="coverSubtitleBtn" class="w-full text-sm font-semibold text-white brand-gradient rounded-xl py-2.5 shadow-sm shadow-brand/30 hover:opacity-95 transition">
+              Cover Original Subtitle
+            </button>
+            <p class="text-xs text-slate-400 -mt-2">One click: a full-width blur band over where captions usually sit. Adjust Y/height below if needed.</p>
+
+            <div id="blurControls" class="hidden flex-col gap-3">
+              <div id="blurBoxList" class="flex flex-col gap-3"></div>
+              <button id="addBlurBoxBtn" class="text-sm font-semibold text-brand border border-brand/40 rounded-xl py-2 hover:bg-blue-50 transition disabled:opacity-40">
+                + Add Blur Box
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: Advanced -->
+        <div data-panel="advanced" class="hidden flex-col gap-5">
+
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Intro / Outro</label>
+              <p class="text-xs text-slate-400 mt-0.5">Concatenate clips before/after the recap</p>
+            </div>
+            <button id="introOutroToggle" class="toggle-switch" data-on="false"><span class="toggle-knob"></span></button>
+          </div>
+
+          <div id="introOutroControls" class="hidden flex-col gap-4">
+            <div>
+              <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Intro clip</label>
+              <div class="mt-2 flex items-center gap-2">
+                <button id="introPickBtn" class="flex-1 text-sm font-medium text-slate-600 border border-slate-200 rounded-xl px-3 py-2.5 text-left hover:border-brand transition truncate">
+                  Choose file…
+                </button>
+                <button id="introClearBtn" class="hidden text-slate-400 hover:text-slate-600 px-2">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <input id="introFileInput" type="file" accept="video/*" class="hidden" />
+              <p id="introFileName" class="text-xs text-slate-400 mt-1">None selected</p>
+            </div>
+            <div>
+              <label class="text-xs font-bold tracking-wide text-slate-400 uppercase">Outro clip</label>
+              <div class="mt-2 flex items-center gap-2">
+                <button id="outroPickBtn" class="flex-1 text-sm font-medium text-slate-600 border border-slate-200 rounded-xl px-3 py-2.5 text-left hover:border-brand transition truncate">
+                  Choose file…
+                </button>
+                <button id="outroClearBtn" class="hidden text-slate-400 hover:text-slate-600 px-2">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <input id="outroFileInput" type="file" accept="video/*" class="hidden" />
+              <p id="outroFileName" class="text-xs text-slate-400 mt-1">None selected</p>
+            </div>
+          </div>
+
+          <div class="border-t border-slate-100 pt-5 flex flex-col gap-3">
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input id="autoColorCheck" type="checkbox" class="w-4 h-4 accent-brand rounded" />
+              <span class="text-sm font-medium text-slate-600">Auto Color</span>
+              <span class="text-xs text-slate-400">light contrast/saturation pass</span>
+            </label>
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input id="flipVideoCheck" type="checkbox" class="w-4 h-4 accent-brand rounded" />
+              <span class="text-sm font-medium text-slate-600">Flip Video</span>
+              <span class="text-xs text-slate-400">horizontal mirror, helps with copyright</span>
+            </label>
+          </div>
+
+          <p class="text-xs text-slate-400 border-t border-slate-100 pt-4">Mode, voice, speed, style, subtitles and blur from the other tabs all travel with the job when it starts.</p>
+          <button id="startBtn" disabled
+            class="w-full py-4 rounded-xl brand-gradient text-white font-bold text-base shadow-lg shadow-brand/30 disabled:opacity-40 disabled:shadow-none hover:opacity-95 transition">
+            START PROCESSING
+          </button>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <!-- Recent results (kept in the browser only) -->
+  <div id="historySection" class="hidden max-w-[1600px] mx-auto px-6 pb-8">
+    <h2 class="text-sm font-bold tracking-widest text-slate-400 uppercase mb-3">Recent Results</h2>
+    <div id="historyList" class="grid grid-cols-1 sm:grid-cols-3 gap-4"></div>
+  </div>
+
+  <!-- Voice picker modal -->
+  <div id="voiceModal" class="hidden fixed inset-0 bg-slate-900/25 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+    <div class="glass-panel w-full max-w-sm p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-sm font-bold tracking-widest text-slate-400 uppercase">Choose voice</h3>
+        <button id="closeVoiceModal" class="text-slate-400 hover:text-slate-600">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div class="flex flex-col gap-2" id="voiceList">
+        <div class="voice-option flex items-center justify-between rounded-xl border-2 border-brand bg-blue-50 px-4 py-3 cursor-pointer transition"
+             data-voice="my-MM-ThihaNeural" data-label="Thiha">
+          <div>
+            <p class="text-sm font-semibold text-slate-700">Thiha</p>
+            <p class="text-xs text-slate-400">my-MM-ThihaNeural · male</p>
+          </div>
+          <button class="preview-btn p-2 rounded-full bg-white border border-slate-200 hover:border-brand transition" data-voice="my-MM-ThihaNeural">
+            <svg class="w-4 h-4 text-brand" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+        </div>
+        <div class="voice-option flex items-center justify-between rounded-xl border-2 border-slate-200 px-4 py-3 cursor-pointer transition hover:border-brand/50"
+             data-voice="my-MM-NilarNeural" data-label="Nilar">
+          <div>
+            <p class="text-sm font-semibold text-slate-700">Nilar</p>
+            <p class="text-xs text-slate-400">my-MM-NilarNeural · female</p>
+          </div>
+          <button class="preview-btn p-2 rounded-full bg-white border border-slate-200 hover:border-brand transition" data-voice="my-MM-NilarNeural">
+            <svg class="w-4 h-4 text-brand" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+        </div>
+      </div>
+      <audio id="previewAudio" class="hidden"></audio>
+    </div>
+  </div>
+
+<script>
+  const state = {
+    jobId: null,
+    mode: 'dubbing',
+    aspect: 'original',
+    aspectMode: 'fill',
+    aspectCustomW: 4,
+    aspectCustomH: 5,
+    voice: 'my-MM-ThihaNeural',
+    voiceSpeed: 1.30,
+    recapLength: 'standard',
+    recapTone: 'conversational',
+    watermark: '',
+
+    subtitlesEnabled: true,
+    subtitleMode: 'burn',
+    subtitleFont: 'Noto Sans Myanmar',
+    subtitleFontSize: 'medium',
+    subtitleColor: 'white',
+    subtitlePosition: 'bottom',
+    subtitleCustomBox: { x: 0.10, y: 0.78, width: 0.80 },
+    subtitleBackground: 'none',
+
+    blurEnabled: false,
+    blurBoxes: [], // {x,y,width,height,strength(0-100),style('smooth'|'mosaic'|'remove')}
+
+    introOutroEnabled: false,
+    introSet: false,
+    outroSet: false,
+    autoColor: false,
+    flipVideo: false,
+
+    pollTimer: null,
+    jobStartTime: null,
+  };
+
+  const HISTORY_KEY = 'recapStudioHistory';
+  const MAX_HISTORY = 3;
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  // ---------- tabs ----------
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = btn.dataset.tab;
+      document.querySelectorAll('[data-panel]').forEach(p => {
+        p.classList.toggle('hidden', p.dataset.panel !== tab);
+        p.classList.toggle('flex', p.dataset.panel === tab);
+      });
+    });
+  });
+
+  // ---------- mode selector ----------
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.mode = btn.dataset.mode;
+    });
+  });
+
+  // ---------- source: aspect ----------
+  const aspectCustomControls = document.getElementById('aspectCustomControls');
+  const aspectModeControls = document.getElementById('aspectModeControls');
+
+  document.getElementById('aspectSelect').addEventListener('change', e => {
+    state.aspect = e.target.value;
+    const isCustom = state.aspect === 'custom';
+    const isOriginal = state.aspect === 'original';
+    aspectCustomControls.classList.toggle('hidden', !isCustom);
+    aspectModeControls.classList.toggle('hidden', isOriginal);
+    applyPreviewAspect();
+  });
+
+  document.getElementById('aspectCustomW').addEventListener('input', e => {
+    state.aspectCustomW = parseFloat(e.target.value) || 0;
+    applyPreviewAspect();
+  });
+  document.getElementById('aspectCustomH').addEventListener('input', e => {
+    state.aspectCustomH = parseFloat(e.target.value) || 0;
+    applyPreviewAspect();
+  });
+
+  document.querySelectorAll('[data-aspect-mode]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-aspect-mode]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.aspectMode = btn.dataset.aspectMode;
+      applyPreviewAspect();
+    });
+  });
+
+  // ---------- voice tab: speed / length / tone / watermark ----------
+  const speedSlider = document.getElementById('speedSlider');
+  const speedLabel = document.getElementById('speedLabel');
+
+  function rateStrFor(speed) {
+    const pct = Math.round((speed - 1) * 100);
+    const sign = pct >= 0 ? '+' : '';
+    return `${sign}${pct}%`;
+  }
+  function updateSpeedLabel() {
+    const v = parseFloat(speedSlider.value).toFixed(2);
+    speedLabel.innerHTML = `${v}x <span class="text-slate-400 font-normal">(${rateStrFor(v)})</span>`;
+  }
+  speedSlider.addEventListener('input', () => {
+    state.voiceSpeed = parseFloat(speedSlider.value);
+    updateSpeedLabel();
+  });
+
+  document.getElementById('lengthSelect').addEventListener('change', e => {
+    state.recapLength = e.target.value;
+  });
+  document.getElementById('toneSelect').addEventListener('change', e => {
+    state.recapTone = e.target.value;
+  });
+  document.getElementById('watermarkInput').addEventListener('input', e => {
+    state.watermark = e.target.value.trim();
+  });
+
+  // ---------- voice picker modal ----------
+  const voiceModal = document.getElementById('voiceModal');
+  const chooseVoiceBtn = document.getElementById('chooseVoiceBtn');
+  const chosenVoiceName = document.getElementById('chosenVoiceName');
+  const previewAudio = document.getElementById('previewAudio');
+
+  chooseVoiceBtn.addEventListener('click', () => voiceModal.classList.remove('hidden'));
+  document.getElementById('closeVoiceModal').addEventListener('click', () => voiceModal.classList.add('hidden'));
+  voiceModal.addEventListener('click', e => { if (e.target === voiceModal) voiceModal.classList.add('hidden'); });
+
+  document.querySelectorAll('.voice-option').forEach(opt => {
+    opt.addEventListener('click', e => {
+      if (e.target.closest('.preview-btn')) return;
+      document.querySelectorAll('.voice-option').forEach(o => {
+        o.classList.remove('border-brand', 'bg-blue-50');
+        o.classList.add('border-slate-200');
+      });
+      opt.classList.remove('border-slate-200');
+      opt.classList.add('border-brand', 'bg-blue-50');
+      state.voice = opt.dataset.voice;
+      chosenVoiceName.textContent = opt.dataset.label;
+      voiceModal.classList.add('hidden');
+    });
+  });
+
+  document.querySelectorAll('.preview-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      previewAudio.src = `/voice-preview/${btn.dataset.voice}`;
+      try { await previewAudio.play(); } catch (err) { /* ignore autoplay quirks */ }
+    });
+  });
+
+  // ================= SUBTITLES TAB =================
+  const subtitlesToggle = document.getElementById('subtitlesToggle');
+  const subtitleControls = document.getElementById('subtitleControls');
+  const customPosControls = document.getElementById('customPosControls');
+  const subtitleBoxEl = document.getElementById('subtitleBox');
+  const subtitleBoxSample = document.getElementById('subtitleBoxSample');
+  const viewPreview = document.getElementById('view-preview');
+
+  // The overlay boxes are positioned as CSS percentages of #view-preview,
+  // but the <video> inside it is object-contain'd - if the container's
+  // aspect ratio doesn't exactly match the video's (e.g. a max-height cap
+  // clips one dimension), object-contain letterboxes the video and a
+  // percentage-of-container position no longer matches a percentage-of-
+  // video-frame position. This computes the ACTUAL displayed video
+  // rectangle (in pixels, relative to #view-preview's own box) so overlay
+  // math always maps to real video pixels regardless of any letterboxing.
+  function getVideoContentRect() {
+    const video = document.getElementById('previewVideo');
+    const containerRect = viewPreview.getBoundingClientRect();
+    // object-fit:cover (Fill aspect mode) always fills the container
+    // exactly - no letterboxing to compute, the content rect IS the
+    // container. This also matches what the backend actually renders:
+    // Fill crops the source to the target shape with no bars, same as
+    // object-fit:cover cropping the displayed video to the container.
+    if (video.style.objectFit === 'cover') {
+      return { left: 0, top: 0, width: containerRect.width, height: containerRect.height };
+    }
+    const vw = video.videoWidth || containerRect.width;
+    const vh = video.videoHeight || containerRect.height;
+    const videoRatio = vw / vh;
+    const boxRatio = containerRect.width / (containerRect.height || 1);
+    let width, height, offsetX, offsetY;
+    if (videoRatio > boxRatio) {
+      width = containerRect.width;
+      height = width / videoRatio;
+      offsetX = 0;
+      offsetY = (containerRect.height - height) / 2;
+    } else {
+      height = containerRect.height;
+      width = height * videoRatio;
+      offsetY = 0;
+      offsetX = (containerRect.width - width) / 2;
+    }
+    return { left: offsetX, top: offsetY, width, height };
+  }
+
+  // ---------- aspect / crop ----------
+  const ASPECT_RATIO_MAP = { '9:16': [9, 16], '3:4': [3, 4], '1:1': [1, 1] };
+
+  function targetAspectRatio() {
+    if (state.aspect === 'custom') {
+      const w = state.aspectCustomW, h = state.aspectCustomH;
+      return (w > 0 && h > 0) ? [w, h] : null;
+    }
+    return ASPECT_RATIO_MAP[state.aspect] || null;
+  }
+
+  // Mirrors the backend exactly (see compute_aspect_reframe in app.py):
+  // Fill -> object-fit:cover (crop to fill, no bars); Fit -> object-fit:
+  // contain (letterbox/pillarbox, no crop) - both achieved by resizing
+  // #view-preview's own aspect-ratio to the target shape and letting the
+  // <video> element's native object-fit handle cropping vs. padding, so
+  // no separate overlay/mask math is needed for the preview.
+  const PREVIEW_MAX_HEIGHT = 560;
+
+  // Sizes #view-preview explicitly in pixels rather than via CSS
+  // aspect-ratio - the container is a child of a column flex box, which
+  // stretches it to full width by default, and aspect-ratio can't shrink
+  // a dimension that isn't auto, so a tall target ratio (e.g. 9:16) would
+  // otherwise get squashed against the height cap instead of narrowing.
+  // Setting width:100% first measures the real available width (correctly
+  // honoring the parent's padding via normal layout), then the actual
+  // width/height are computed from that and the target ratio, capped by
+  // PREVIEW_MAX_HEIGHT - shrinking width for tall ratios, exactly what
+  // mx-auto centering is there for.
+  function applyPreviewAspect() {
+    const ratio = targetAspectRatio();
+    viewPreview.style.width = '100%';
+    const availW = viewPreview.getBoundingClientRect().width || 1;
+
+    let r, objectFit;
+    if (!ratio) {
+      const w = previewVideo.videoWidth, h = previewVideo.videoHeight;
+      r = (w && h) ? w / h : (availW / PREVIEW_MAX_HEIGHT);
+      objectFit = 'contain';
+    } else {
+      r = ratio[0] / ratio[1];
+      objectFit = state.aspectMode === 'fit' ? 'contain' : 'cover';
+    }
+    previewVideo.style.objectFit = objectFit;
+
+    let width = availW, height = width / r;
+    if (height > PREVIEW_MAX_HEIGHT) {
+      height = PREVIEW_MAX_HEIGHT;
+      width = height * r;
+    }
+    viewPreview.style.width = `${width}px`;
+    viewPreview.style.height = `${height}px`;
+
+    renderSubtitleBox();
+    renderBlurBoxes();
+  }
+
+  function setToggle(el, on) { el.dataset.on = on ? 'true' : 'false'; }
+
+  function setControlsEnabled(container, enabled) {
+    container.classList.toggle('opacity-40', !enabled);
+    container.querySelectorAll('button, select, input').forEach(el => { el.disabled = !enabled; });
+  }
+
+  subtitlesToggle.addEventListener('click', () => {
+    state.subtitlesEnabled = subtitlesToggle.dataset.on !== 'true';
+    setToggle(subtitlesToggle, state.subtitlesEnabled);
+    setControlsEnabled(subtitleControls, state.subtitlesEnabled);
+    renderSubtitleBox();
+  });
+
+  document.querySelectorAll('[data-sub-mode]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-sub-mode]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.subtitleMode = btn.dataset.subMode;
+    });
+  });
+
+  document.querySelectorAll('[data-sub-pos]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-sub-pos]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.subtitlePosition = btn.dataset.subPos;
+      const isCustom = state.subtitlePosition === 'custom';
+      customPosControls.classList.toggle('hidden', !isCustom);
+      customPosControls.classList.toggle('flex', isCustom);
+      renderSubtitleBox();
+    });
+  });
+
+  const subFontSelect = document.getElementById('subFont');
+  subFontSelect.addEventListener('change', e => { state.subtitleFont = e.target.value; });
+
+  // Fonts folder is scanned fresh by the server on every request, so this
+  // fetch (on page load) is what makes a newly-dropped-in font show up -
+  // no restart needed on the server side, just a page reload here.
+  fetch('/fonts').then(r => r.json()).then(data => {
+    const fonts = data.fonts || [];
+    if (fonts.length <= 1) return; // just the built-in default, nothing to add
+    subFontSelect.innerHTML = '';
+    fonts.forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f.family;
+      opt.textContent = f.family;
+      subFontSelect.appendChild(opt);
+    });
+    subFontSelect.value = state.subtitleFont;
+  }).catch(() => {});
+
+  document.getElementById('subFontSize').addEventListener('change', e => { state.subtitleFontSize = e.target.value; });
+  document.getElementById('subColor').addEventListener('change', e => {
+    state.subtitleColor = e.target.value;
+    subtitleBoxSample.style.color = { white: '#ffffff', yellow: '#facc15', black: '#000000' }[state.subtitleColor];
+  });
+  document.getElementById('subBackground').addEventListener('change', e => {
+    state.subtitleBackground = e.target.value;
+    subtitleBoxEl.style.background =
+      state.subtitleBackground === 'solid' ? 'rgba(0,0,0,0.85)' :
+      state.subtitleBackground === 'transparent' ? 'rgba(0,0,0,0.4)' : 'rgba(59,111,224,0.10)';
+  });
+
+  const subXSlider = document.getElementById('subXSlider');
+  const subYSlider = document.getElementById('subYSlider');
+  const subWSlider = document.getElementById('subWSlider');
+
+  function renderSubtitleBox() {
+    const box = state.subtitleCustomBox;
+    const content = getVideoContentRect();
+    subtitleBoxEl.style.left = `${content.left + box.x * content.width}px`;
+    subtitleBoxEl.style.top = `${content.top + box.y * content.height}px`;
+    subtitleBoxEl.style.width = `${box.width * content.width}px`;
+
+    const visible = state.subtitlesEnabled && state.subtitlePosition === 'custom' && !viewPreview.classList.contains('hidden');
+    subtitleBoxEl.classList.toggle('hidden', !visible);
+
+    subXSlider.value = Math.round(box.x * 100);
+    subYSlider.value = Math.round(box.y * 100);
+    subWSlider.value = Math.round(box.width * 100);
+    document.getElementById('subXVal').textContent = `${Math.round(box.x * 100)}%`;
+    document.getElementById('subYVal').textContent = `${Math.round(box.y * 100)}%`;
+    document.getElementById('subWVal').textContent = `${Math.round(box.width * 100)}%`;
+  }
+
+  subXSlider.addEventListener('input', e => {
+    state.subtitleCustomBox.x = clamp(parseInt(e.target.value) / 100, 0, 1 - state.subtitleCustomBox.width);
+    renderSubtitleBox();
+  });
+  subYSlider.addEventListener('input', e => {
+    state.subtitleCustomBox.y = clamp(parseInt(e.target.value) / 100, 0, 0.95);
+    renderSubtitleBox();
+  });
+  subWSlider.addEventListener('input', e => {
+    state.subtitleCustomBox.width = clamp(parseInt(e.target.value) / 100, 0.10, 1 - state.subtitleCustomBox.x);
+    renderSubtitleBox();
+  });
+
+  // ---------- generic drag/resize for canvas boxes ----------
+  function makeInteractiveBox(el, box, opts, onChange) {
+    let mode = null, startX, startY, startBox;
+
+    function onMove(e) {
+      const content = getVideoContentRect();
+      const dx = (e.clientX - startX) / content.width;
+      const dy = (e.clientY - startY) / content.height;
+      if (mode === 'drag') {
+        box.x = clamp(startBox.x + dx, 0, 1 - box.width);
+        box.y = clamp(startBox.y + dy, 0, 1 - (box.height ?? 0));
+      } else if (mode === 'resize') {
+        if (opts.resizeW) box.width = clamp(startBox.width + dx, 0.05, 1 - box.x);
+        if (opts.resizeH) box.height = clamp(startBox.height + dy, 0.05, 1 - box.y);
+      }
+      onChange(box);
+    }
+    function onUp() {
+      mode = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+    function onDown(e, m) {
+      e.preventDefault();
+      e.stopPropagation();
+      mode = m;
+      startX = e.clientX;
+      startY = e.clientY;
+      startBox = { ...box };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    }
+
+    el.addEventListener('mousedown', e => {
+      if (e.target.closest('.resize-handle') || e.target.closest('.delete-handle')) return;
+      onDown(e, 'drag');
+    });
+    const handle = el.querySelector('.resize-handle');
+    if (handle) handle.addEventListener('mousedown', e => onDown(e, 'resize'));
+  }
+
+  makeInteractiveBox(subtitleBoxEl, state.subtitleCustomBox, { resizeW: true, resizeH: false }, renderSubtitleBox);
+
+  // ---------- Blur Mask ----------
+  const blurToggle = document.getElementById('blurToggle');
+  const blurControls = document.getElementById('blurControls');
+  const blurBoxList = document.getElementById('blurBoxList');
+  const addBlurBoxBtn = document.getElementById('addBlurBoxBtn');
+  const canvasOverlay = document.getElementById('canvasOverlay');
+
+  function defaultBlurBox() {
+    return { x: 0.10, y: 0.82, width: 0.80, height: 0.12, strength: 70, style: 'smooth' };
+  }
+
+  const BLUR_STYLE_LABELS = { smooth: 'Blur (smooth)', mosaic: 'Mosaic', remove: 'Remove (delogo)' };
+
+  function renderBlurBoxes() {
+    canvasOverlay.querySelectorAll('.blur-box').forEach(el => el.remove());
+    blurBoxList.innerHTML = '';
+
+    const showOnCanvas = state.blurEnabled && !viewPreview.classList.contains('hidden');
+
+    state.blurBoxes.forEach((box, i) => {
+      const el = document.createElement('div');
+      el.className = 'blur-box absolute border-2 border-dashed border-white bg-white/15 rounded pointer-events-auto cursor-move';
+      el.classList.toggle('hidden', !showOnCanvas);
+      el.innerHTML = `<div class="resize-handle absolute cursor-nwse-resize" style="right:-6px;bottom:-6px;"></div>
+                       <span class="absolute top-1 left-1 text-[10px] font-bold text-white bg-black/50 rounded px-1">Blur ${i + 1}</span>`;
+      canvasOverlay.appendChild(el);
+
+      function updateOverlay() {
+        const content = getVideoContentRect();
+        el.style.left = `${content.left + box.x * content.width}px`;
+        el.style.top = `${content.top + box.y * content.height}px`;
+        el.style.width = `${box.width * content.width}px`;
+        el.style.height = `${box.height * content.height}px`;
+      }
+      updateOverlay();
+      makeInteractiveBox(el, box, { resizeW: true, resizeH: true }, () => { updateOverlay(); syncCard(); });
+
+      const card = document.createElement('div');
+      card.className = 'glass-panel-soft p-3 flex flex-col gap-2';
+      card.innerHTML = `
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-500">Box ${i + 1}</span>
+          <div class="flex items-center gap-3">
+            <button class="snap-full-btn text-xs font-semibold text-brand hover:underline">Snap to full width</button>
+            <button class="delete-box-btn text-slate-400 hover:text-slate-600">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          ${['smooth', 'mosaic', 'remove'].map(s => `
+            <button data-box-style="${s}" class="seg-btn ${box.style === s ? 'active' : ''} text-xs font-semibold px-2 py-2 rounded-xl border border-slate-200 text-slate-600 transition">${BLUR_STYLE_LABELS[s]}</button>
+          `).join('')}
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          ${['x', 'y', 'width', 'height'].map(dim => `
+            <div>
+              <div class="flex justify-between text-xs text-slate-400"><span>${dim[0].toUpperCase()}${dim.slice(1)}</span><span data-val="${dim}">${Math.round(box[dim] * 100)}%</span></div>
+              <input type="range" min="2" max="100" value="${Math.round(box[dim] * 100)}" data-dim="${dim}" class="w-full accent-brand" />
+            </div>`).join('')}
+        </div>
+        <div data-strength-row class="${box.style === 'remove' ? 'hidden' : ''}">
+          <div class="flex justify-between text-xs text-slate-400"><span>Strength</span><span data-val="strength">${box.strength}</span></div>
+          <input type="range" min="0" max="100" value="${box.strength}" data-dim="strength" class="w-full accent-brand" />
+        </div>
+      `;
+      blurBoxList.appendChild(card);
+
+      card.querySelectorAll('[data-box-style]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          box.style = btn.dataset.boxStyle;
+          card.querySelectorAll('[data-box-style]').forEach(b => b.classList.toggle('active', b === btn));
+          card.querySelector('[data-strength-row]').classList.toggle('hidden', box.style === 'remove');
+        });
+      });
+
+      function syncCard() {
+        ['x', 'y', 'width', 'height'].forEach(dim => {
+          card.querySelector(`input[data-dim="${dim}"]`).value = Math.round(box[dim] * 100);
+          card.querySelector(`[data-val="${dim}"]`).textContent = `${Math.round(box[dim] * 100)}%`;
+        });
+      }
+
+      card.querySelectorAll('input[type=range]').forEach(input => {
+        input.addEventListener('input', () => {
+          const dim = input.dataset.dim;
+          const val = parseInt(input.value);
+          if (dim === 'strength') {
+            box.strength = val;
+            card.querySelector('[data-val="strength"]').textContent = val;
+          } else if (dim === 'x') {
+            box.x = clamp(val / 100, 0, 1 - box.width);
+          } else if (dim === 'y') {
+            box.y = clamp(val / 100, 0, 1 - box.height);
+          } else if (dim === 'width') {
+            box.width = clamp(val / 100, 0.02, 1 - box.x);
+          } else if (dim === 'height') {
+            box.height = clamp(val / 100, 0.02, 1 - box.y);
+          }
+          if (dim !== 'strength') {
+            card.querySelector(`[data-val="${dim}"]`).textContent = `${Math.round(box[dim] * 100)}%`;
+          }
+          updateOverlay();
+        });
+      });
+
+      card.querySelector('.snap-full-btn').addEventListener('click', () => {
+        box.x = 0;
+        box.width = 1.0;
+        syncCard();
+        updateOverlay();
+      });
+
+      card.querySelector('.delete-box-btn').addEventListener('click', () => {
+        state.blurBoxes.splice(i, 1);
+        renderBlurBoxes();
+      });
+    });
+
+    addBlurBoxBtn.disabled = state.blurBoxes.length >= 3;
+  }
+
+  function defaultCoverBand() {
+    // Full-width band over the lower-center area, where these burned-in
+    // captions usually sit - strong enough by default to reliably hide them.
+    return { x: 0, y: 0.76, width: 1.0, height: 0.14, strength: 75, style: 'smooth' };
+  }
+
+  document.getElementById('coverSubtitleBtn').addEventListener('click', () => {
+    if (state.blurBoxes.length >= 3) {
+      alert('Already have 3 blur boxes (max) - remove one first.');
+      return;
+    }
+    state.blurBoxes.push(defaultCoverBand());
+    if (!state.blurEnabled) {
+      state.blurEnabled = true;
+      setToggle(blurToggle, true);
+      blurControls.classList.remove('hidden');
+      blurControls.classList.add('flex');
+    }
+    renderBlurBoxes();
+  });
+
+  addBlurBoxBtn.addEventListener('click', () => {
+    if (state.blurBoxes.length >= 3) return;
+    state.blurBoxes.push(defaultBlurBox());
+    renderBlurBoxes();
+  });
+
+  blurToggle.addEventListener('click', () => {
+    state.blurEnabled = blurToggle.dataset.on !== 'true';
+    setToggle(blurToggle, state.blurEnabled);
+    blurControls.classList.toggle('hidden', !state.blurEnabled);
+    blurControls.classList.toggle('flex', state.blurEnabled);
+    renderBlurBoxes();
+  });
+
+  // ================= ADVANCED TAB =================
+  const introOutroToggle = document.getElementById('introOutroToggle');
+  const introOutroControls = document.getElementById('introOutroControls');
+
+  introOutroToggle.addEventListener('click', () => {
+    state.introOutroEnabled = introOutroToggle.dataset.on !== 'true';
+    setToggle(introOutroToggle, state.introOutroEnabled);
+    introOutroControls.classList.toggle('hidden', !state.introOutroEnabled);
+    introOutroControls.classList.toggle('flex', state.introOutroEnabled);
+  });
+
+  async function uploadSideClip(kind, file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const resp = await fetch(`/upload/${state.jobId}/${kind}`, { method: 'POST', body: formData });
+    if (!resp.ok) throw new Error(await resp.text());
+    return resp.json();
+  }
+
+  function wireSideClip(kind) {
+    const pickBtn = document.getElementById(`${kind}PickBtn`);
+    const clearBtn = document.getElementById(`${kind}ClearBtn`);
+    const fileInput = document.getElementById(`${kind}FileInput`);
+    const nameEl = document.getElementById(`${kind}FileName`);
+
+    pickBtn.addEventListener('click', () => {
+      if (!state.jobId) { nameEl.textContent = 'Upload a main video first'; return; }
+      fileInput.click();
+    });
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      nameEl.textContent = `Uploading ${file.name}…`;
+      try {
+        await uploadSideClip(kind, file);
+        state[`${kind}Set`] = true;
+        nameEl.textContent = file.name;
+        clearBtn.classList.remove('hidden');
+      } catch (err) {
+        nameEl.textContent = `Upload failed: ${err.message}`;
+      }
+    });
+    clearBtn.addEventListener('click', async () => {
+      state[`${kind}Set`] = false;
+      nameEl.textContent = 'None selected';
+      clearBtn.classList.add('hidden');
+      fileInput.value = '';
+      if (state.jobId) {
+        await fetch(`/upload/${state.jobId}/${kind}`, { method: 'DELETE' }).catch(() => {});
+      }
+    });
+  }
+  wireSideClip('intro');
+  wireSideClip('outro');
+
+  document.getElementById('autoColorCheck').addEventListener('change', e => { state.autoColor = e.target.checked; });
+  document.getElementById('flipVideoCheck').addEventListener('change', e => { state.flipVideo = e.target.checked; });
+
+  // ---------- canvas view switching ----------
+  function showView(name) {
+    ['empty', 'preview', 'processing', 'done', 'failed'].forEach(v => {
+      document.getElementById(`view-${v}`).classList.toggle('hidden', v !== name);
+    });
+    if (name === 'preview') {
+      applyPreviewAspect();
+    } else {
+      renderSubtitleBox();
+      renderBlurBoxes();
+    }
+  }
+
+  // ---------- upload ----------
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const uploadStatus = document.getElementById('uploadStatus');
+  const startBtn = document.getElementById('startBtn');
+  const previewVideo = document.getElementById('previewVideo');
+  const resBadge = document.getElementById('resBadge');
+  const timecode = document.getElementById('timecode');
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) handleFile(fileInput.files[0]);
+  });
+
+  function fmtTime(s) {
+    if (!isFinite(s)) return '00:00';
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  }
+
+  async function handleFile(file) {
+    previewVideo.src = URL.createObjectURL(file);
+    showView('preview');
+    uploadStatus.textContent = 'Uploading…';
+    startBtn.disabled = true;
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const resp = await fetch('/upload', { method: 'POST', body: formData });
+      if (!resp.ok) throw new Error(await resp.text());
+      const data = await resp.json();
+      state.jobId = data.job_id;
+      uploadStatus.textContent = `Uploaded: ${data.filename}`;
+      startBtn.disabled = false;
+    } catch (err) {
+      uploadStatus.textContent = `Upload failed: ${err.message}`;
+    }
+  }
+
+  // ---------- Video URL (yt-dlp) ----------
+  const videoUrlInput = document.getElementById('videoUrlInput');
+  const loadUrlBtn = document.getElementById('loadUrlBtn');
+  const urlStatus = document.getElementById('urlStatus');
+  let urlPollTimer = null;
+
+  loadUrlBtn.addEventListener('click', async () => {
+    const url = videoUrlInput.value.trim();
+    if (!url) return;
+    loadUrlBtn.disabled = true;
+    startBtn.disabled = true;
+    urlStatus.textContent = 'Downloading…';
+
+    try {
+      const resp = await fetch('/download-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const data = await resp.json();
+      state.jobId = data.job_id;
+      pollUrlDownload();
+    } catch (err) {
+      urlStatus.textContent = `Download failed: ${err.message}`;
+      loadUrlBtn.disabled = false;
+    }
+  });
+
+  function pollUrlDownload() {
+    if (urlPollTimer) clearInterval(urlPollTimer);
+    urlPollTimer = setInterval(async () => {
+      try {
+        const resp = await fetch(`/download-status/${state.jobId}`);
+        const data = await resp.json();
+        if (data.status === 'downloading') {
+          urlStatus.textContent = 'Downloading…';
+        } else if (data.status === 'done') {
+          clearInterval(urlPollTimer);
+          urlStatus.textContent = `Downloaded: ${data.filename}`;
+          previewVideo.src = `/source-preview/${state.jobId}`;
+          showView('preview');
+          loadUrlBtn.disabled = false;
+          startBtn.disabled = false;
+        } else if (data.status === 'failed') {
+          clearInterval(urlPollTimer);
+          urlStatus.textContent = `Download failed: ${data.error || 'unknown error'}`;
+          loadUrlBtn.disabled = false;
+        }
+      } catch (err) {
+        // transient network hiccup - keep polling
+      }
+    }, 1500);
+  }
+
+  previewVideo.addEventListener('loadedmetadata', () => {
+    const h = previewVideo.videoHeight, w = previewVideo.videoWidth;
+    resBadge.textContent = h >= 1080 ? '1080P' : h >= 720 ? '720P' : `${w}x${h}`;
+    timecode.textContent = `${fmtTime(previewVideo.currentTime)} / ${fmtTime(previewVideo.duration)}`;
+    applyPreviewAspect();
+  });
+  previewVideo.addEventListener('timeupdate', () => {
+    timecode.textContent = `${fmtTime(previewVideo.currentTime)} / ${fmtTime(previewVideo.duration)}`;
+  });
+
+  // ---------- start / processing ----------
+  const ringProgress = document.getElementById('ringProgress');
+  const ringPercent = document.getElementById('ringPercent');
+  const etaText = document.getElementById('etaText');
+  const stageListEl = document.getElementById('stageList');
+  const RING_CIRCUMFERENCE = 2 * Math.PI * 52;
+
+  // "queued" covers video probing/audio extraction before AssemblyAI is
+  // even called - shown to the user as "Fetching" rather than an internal
+  // detail they'd have no context for.
+  const STAGE_ORDER = ['queued', 'transcribing', 'translating', 'synthesizing', 'rendering'];
+  const STAGE_UI_LABELS = ['Fetching', 'Transcribing', 'Translating', 'Synthesizing', 'Rendering'];
+
+  stageListEl.innerHTML = STAGE_UI_LABELS.map((label, i) => `
+    <div class="flex items-center gap-3">
+      <span id="stageIcon${i}" class="stage-row-icon pending">${i + 1}</span>
+      <span id="stageLabel${i}" class="text-sm font-medium text-slate-400">${label}</span>
+    </div>
+  `).join('');
+
+  function updateStageList(status) {
+    const idx = status === 'done' ? STAGE_ORDER.length : STAGE_ORDER.indexOf(status);
+    STAGE_UI_LABELS.forEach((label, i) => {
+      const icon = document.getElementById(`stageIcon${i}`);
+      const labelEl = document.getElementById(`stageLabel${i}`);
+      icon.classList.remove('pending', 'active', 'done');
+      if (i < idx) {
+        icon.classList.add('done');
+        icon.innerHTML = '✓';
+        labelEl.className = 'text-sm font-medium text-slate-500';
+      } else if (i === idx) {
+        icon.classList.add('active');
+        icon.textContent = i + 1;
+        labelEl.className = 'text-sm font-bold text-slate-700';
+      } else {
+        icon.classList.add('pending');
+        icon.textContent = i + 1;
+        labelEl.className = 'text-sm font-medium text-slate-400';
+      }
+    });
+  }
+
+  function setRing(percent) {
+    const offset = RING_CIRCUMFERENCE * (1 - percent / 100);
+    ringProgress.style.strokeDasharray = RING_CIRCUMFERENCE;
+    ringProgress.style.strokeDashoffset = offset;
+    ringPercent.textContent = `${Math.round(percent)}%`;
+  }
+
+  startBtn.addEventListener('click', async () => {
+    if (!state.jobId) return;
+    startBtn.disabled = true;
+    try {
+      const resp = await fetch(`/process/${state.jobId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: state.mode,
+          aspect: state.aspect,
+          aspect_mode: state.aspectMode,
+          aspect_custom_w: state.aspectCustomW,
+          aspect_custom_h: state.aspectCustomH,
+          voice: state.voice,
+          voice_speed: state.voiceSpeed,
+          recap_length: state.recapLength,
+          recap_tone: state.recapTone,
+          watermark: state.watermark,
+          subtitles_enabled: state.subtitlesEnabled,
+          subtitle_mode: state.subtitleMode,
+          subtitle_font: state.subtitleFont,
+          subtitle_font_size: state.subtitleFontSize,
+          subtitle_color: state.subtitleColor,
+          subtitle_position: state.subtitlePosition,
+          subtitle_custom_box: state.subtitleCustomBox,
+          subtitle_background: state.subtitleBackground,
+          blur_enabled: state.blurEnabled,
+          blur_boxes: state.blurBoxes,
+          intro_outro_enabled: state.introOutroEnabled,
+          auto_color: state.autoColor,
+          flip_video: state.flipVideo,
+        }),
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+    } catch (err) {
+      uploadStatus.textContent = `Could not start: ${err.message}`;
+      startBtn.disabled = false;
+      return;
+    }
+    state.jobStartTime = Date.now();
+    setRing(0);
+    updateStageList('queued');
+    etaText.textContent = 'estimating…';
+    showView('processing');
+    startPolling();
+  });
+
+  function startPolling() {
+    stopPolling();
+    state.pollTimer = setInterval(pollStatus, 1200);
+    pollStatus();
+  }
+  function stopPolling() {
+    if (state.pollTimer) clearInterval(state.pollTimer);
+    state.pollTimer = null;
+  }
+
+  async function pollStatus() {
+    if (!state.jobId) return;
+    try {
+      const resp = await fetch(`/status/${state.jobId}`);
+      const data = await resp.json();
+      setRing(data.percent || 0);
+      updateStageList(data.status);
+
+      const elapsed = (Date.now() - state.jobStartTime) / 1000;
+      if (data.percent > 3 && data.percent < 100) {
+        const estTotal = elapsed / (data.percent / 100);
+        const remaining = Math.max(0, estTotal - elapsed);
+        etaText.textContent = `~${fmtTime(remaining)} left`;
+      }
+
+      if (data.status === 'done') {
+        stopPolling();
+        await showResult();
+      } else if (data.status === 'failed') {
+        stopPolling();
+        document.getElementById('failText').textContent = data.error || 'Unknown error';
+        showView('failed');
+      }
+    } catch (err) {
+      // transient network hiccup - keep polling
+    }
+  }
+
+  async function showResult() {
+    const resp = await fetch(`/result/${state.jobId}`);
+    const data = await resp.json();
+    const resultVideo = document.getElementById('resultVideo');
+    resultVideo.src = data.mp4_url;
+    document.getElementById('downloadMp4').href = data.mp4_url;
+    const srtBtn = document.getElementById('downloadSrt');
+    if (data.srt_url) {
+      srtBtn.href = data.srt_url;
+      srtBtn.classList.remove('hidden');
+    } else {
+      srtBtn.classList.add('hidden');
+    }
+    showView('done');
+
+    resultVideo.addEventListener('loadeddata', function onLoaded() {
+      resultVideo.removeEventListener('loadeddata', onLoaded);
+      addToHistory({
+        jobId: state.jobId,
+        mp4Url: data.mp4_url,
+        srtUrl: data.srt_url,
+        mode: state.mode,
+        timestamp: Date.now(),
+        thumbnail: captureThumbnail(resultVideo),
+      });
+    }, { once: true });
+  }
+
+  // ================= HISTORY (browser-only, last 3) =================
+  function captureThumbnail(videoEl) {
+    try {
+      const targetW = 200;
+      const scale = targetW / (videoEl.videoWidth || 1);
+      const canvas = document.createElement('canvas');
+      canvas.width = targetW;
+      canvas.height = Math.round((videoEl.videoHeight || 1) * scale) || 120;
+      canvas.getContext('2d').drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg', 0.6);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function loadHistory() {
+    try {
+      return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+    } catch (err) {
+      return [];
+    }
+  }
+
+  function addToHistory(entry) {
+    const list = loadHistory().filter(h => h.jobId !== entry.jobId);
+    list.unshift(entry);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, MAX_HISTORY)));
+    renderHistory();
+  }
+
+  const MODE_NAMES = { dubbing: 'Dubbing', ai_recap: 'AI Recap', subtitle_only: 'Subtitle Only' };
+
+  function renderHistory() {
+    const list = loadHistory();
+    const section = document.getElementById('historySection');
+    const container = document.getElementById('historyList');
+    section.classList.toggle('hidden', list.length === 0);
+    container.innerHTML = list.map(item => `
+      <div class="history-card glass-panel-soft overflow-hidden">
+        <div class="aspect-video bg-black flex items-center justify-center">
+          ${item.thumbnail ? `<img src="${item.thumbnail}" class="w-full h-full object-cover" />` : '<span class="text-slate-500 text-xs">No preview</span>'}
+        </div>
+        <div class="p-3">
+          <p class="text-xs font-semibold text-slate-600">${MODE_NAMES[item.mode] || item.mode}</p>
+          <p class="text-xs text-slate-400 mb-2">${new Date(item.timestamp).toLocaleString()}</p>
+          <div class="flex gap-2">
+            <a href="${item.mp4Url}" download class="flex-1 text-center text-xs font-semibold px-2 py-1.5 rounded-lg brand-gradient text-white hover:opacity-95 transition">MP4</a>
+            ${item.srtUrl ? `<a href="${item.srtUrl}" download class="flex-1 text-center text-xs font-semibold px-2 py-1.5 rounded-lg border border-brand text-brand hover:bg-blue-50 transition">SRT</a>` : ''}
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  renderHistory();
+
+  document.getElementById('cancelBtn').addEventListener('click', async () => {
+    if (!state.jobId) return;
+    stopPolling();
+    await fetch(`/cancel/${state.jobId}`, { method: 'POST' });
+    showView('preview');
+    startBtn.disabled = false;
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    showView('preview');
+    startBtn.disabled = !state.jobId;
+  });
+
+  // ================= RESET / NEW VIDEO =================
+  function resetAll() {
+    stopPolling();
+    if (urlPollTimer) clearInterval(urlPollTimer);
+    state.jobId = null;
+    state.jobStartTime = null;
+    fileInput.value = '';
+    videoUrlInput.value = '';
+    urlStatus.textContent = '';
+    loadUrlBtn.disabled = false;
+    previewVideo.removeAttribute('src');
+    previewVideo.load();
+    uploadStatus.textContent = '';
+    startBtn.disabled = true;
+    showView('empty');
+  }
+  document.getElementById('resetAllBtn').addEventListener('click', resetAll);
+
+  // Overlay boxes are positioned in pixels derived from the video's actual
+  // displayed rect - that rect changes on any resize/reflow, so recompute.
+  window.addEventListener('resize', () => {
+    if (!viewPreview.classList.contains('hidden')) {
+      applyPreviewAspect();
+    } else {
+      renderSubtitleBox();
+      renderBlurBoxes();
+    }
+  });
+</script>
+</body>

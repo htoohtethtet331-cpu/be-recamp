@@ -8,7 +8,7 @@ const path = require('path');
 
 const { getTranscriptAndTimestamps } = require('./services/assemblyai');
 const { translateUtterances } = require('./services/gemini');
-const { generateTTSForUtterances } = require('./services/tts');
+const { generateTTSForUtterances, synth } = require('./services/tts');
 const { mixAudioOnly } = require('./services/ffmpeg');
 const connectDB = require('./config/db');
 const Settings = require('./models/Settings');
@@ -50,7 +50,10 @@ const storage = multer.diskStorage({
     cb(null, Date.now() + '-' + file.originalname);
   }
 });
-const upload = multer({ storage: storage });
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit for audio files to prevent DoS
+});
 
 // Cloudinary config
 cloudinary.config({
@@ -83,11 +86,18 @@ app.post('/api/auth/google', async (req, res) => {
       // Set tiktokjaxon709@gmail.com as hardcoded admin, others default to free
       const role = email === 'tiktokjaxon709@gmail.com' ? 'admin' : 'free';
       user = await User.create({ name, email, picture, role });
+    } else {
+      // Auto-downgrade premium users if out of limit
+      if (user.role === 'premium' && user.videoLimit <= 0) {
+        user.role = 'free';
+        user.videoLimit = 0;
+        await user.save();
+      }
     }
 
     // Generate JWT
     const token = jwt.sign(
-      { id: user._id, role: user.role, name: user.name, picture: user.picture },
+      { id: user._id, role: user.role, name: user.name, picture: user.picture, videoLimit: user.videoLimit, freeVideosUsed: user.freeVideosUsed, lastFreeVideoDate: user.lastFreeVideoDate },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -105,14 +115,21 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     
+    // Auto-downgrade premium user if limit is 0
+    if (user.role === 'premium' && user.videoLimit <= 0) {
+      user.role = 'free';
+      user.videoLimit = 0;
+      await user.save();
+    }
+    
     // Create a fresh token in case role changed
     const freshToken = jwt.sign(
-      { id: user._id, role: user.role, name: user.name, picture: user.picture },
+      { id: user._id, role: user.role, name: user.name, picture: user.picture, videoLimit: user.videoLimit, freeVideosUsed: user.freeVideosUsed, lastFreeVideoDate: user.lastFreeVideoDate },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
     
-    res.json({ token: freshToken, user: { id: user._id, role: user.role, name: user.name, picture: user.picture } });
+    res.json({ token: freshToken, user: { id: user._id, role: user.role, name: user.name, picture: user.picture, videoLimit: user.videoLimit, freeVideosUsed: user.freeVideosUsed, lastFreeVideoDate: user.lastFreeVideoDate } });
   } catch (error) {
     res.status(500).json({ error: 'Server error fetching user' });
   }
@@ -133,23 +150,37 @@ app.get('/api/admin/keys', requireAdmin, async (req, res) => {
   }
 });
 
-// Update API Keys
+// Update API Keys & Packages
 app.post('/api/admin/keys', requireAdmin, async (req, res) => {
   try {
-    const { geminiKey, groqKey, assemblyAiKey } = req.body;
+    const { geminiKey, groqKey, assemblyAiKey, packages } = req.body;
     let settings = await Settings.findOne();
     if (!settings) {
-      settings = await Settings.create({ geminiKey, groqKey, assemblyAiKey });
+      settings = await Settings.create({ geminiKey, groqKey, assemblyAiKey, packages });
     } else {
-      settings.geminiKey = geminiKey;
-      settings.groqKey = groqKey;
-      settings.assemblyAiKey = assemblyAiKey;
+      if (geminiKey !== undefined) settings.geminiKey = geminiKey;
+      if (groqKey !== undefined) settings.groqKey = groqKey;
+      if (assemblyAiKey !== undefined) settings.assemblyAiKey = assemblyAiKey;
+      if (packages !== undefined) settings.packages = packages;
       await settings.save();
     }
     res.json(settings);
   } catch (error) {
     console.error('Save error:', error);
     res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
+// Get Public Settings (e.g. Packages)
+app.get('/api/settings/public', async (req, res) => {
+  try {
+    let settings = await Settings.findOne();
+    if (!settings) {
+      settings = await Settings.create({});
+    }
+    res.json({ packages: settings.packages });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch public settings' });
   }
 });
 
@@ -168,7 +199,7 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
 app.put('/api/admin/users/:id/role', requireAdmin, async (req, res) => {
   try {
     const { role } = req.body;
-    if (!['free', 'premium', 'admin'].includes(role)) {
+    if (!['free', 'premium', 'admin', 'restrict'].includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
     const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true });
@@ -178,11 +209,49 @@ app.put('/api/admin/users/:id/role', requireAdmin, async (req, res) => {
   }
 });
 
+// Update user video limit (Admin only)
+app.put('/api/admin/users/:id/limit', requireAdmin, async (req, res) => {
+  try {
+    const { videoLimit } = req.body;
+    if (typeof videoLimit !== 'number' || videoLimit < 0) {
+      return res.status(400).json({ error: 'Invalid video limit' });
+    }
+    const user = await User.findByIdAndUpdate(req.params.id, { videoLimit }, { new: true });
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update user limit' });
+  }
+});
+
 // --- Main App Endpoints ---
 
 // Step 1: Extract Audio and Transcribe
-app.post('/api/step1-extract', upload.single('audio'), async (req, res) => {
+app.post('/api/step1-extract', requireAuth, upload.single('audio'), async (req, res) => {
   try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const today = new Date().toISOString().split('T')[0];
+    
+    if (user.role === 'restrict') {
+      return res.status(403).json({ error: 'သင့်အကောင့်ကို ပိတ်ပင်ထားပါသည်။ (Your account has been restricted.)' });
+    }
+    
+    if (user.role === 'free') {
+      if (!user.lastFreeVideoDate || user.lastFreeVideoDate.toISOString().split('T')[0] !== today) {
+        user.freeVideosUsed = 0;
+        user.lastFreeVideoDate = new Date();
+      }
+      if (user.freeVideosUsed >= 3) {
+        return res.status(403).json({ error: 'Daily video limit reached. You can only generate 3 videos per day on the Free plan.' });
+      }
+    } else if (user.role === 'premium') {
+      if (user.videoLimit <= 0) {
+        return res.status(403).json({ error: 'Video limit reached. You have 0 credits remaining.' });
+      }
+    }
+
     if (!req.file) {
       return res.status(400).json({ error: 'No audio file provided' });
     }
@@ -190,6 +259,10 @@ app.post('/api/step1-extract', upload.single('audio'), async (req, res) => {
     
     // We already have the audio extracted by the client!
     let assemblyAiKey = req.body.assemblyAiKey;
+    
+    if (user.role === 'free' && !assemblyAiKey) {
+      return res.status(403).json({ error: 'Free users must provide their own AssemblyAI API key.' });
+    }
     
     // Fallback to database key
     if (!assemblyAiKey) {
@@ -210,14 +283,37 @@ app.post('/api/step1-extract', upload.single('audio'), async (req, res) => {
        process.env.GROQ_API_KEY = settings.groqKey;
     }
 
-    const utterances = await getTranscriptAndTimestamps(req.file.path, assemblyAiKey);
+    const utterances = await getTranscriptAndTimestamps(req.file.path, assemblyAiKey, user.role === 'free');
+
+    // Update limits on success
+    let remainingLimit = 0;
+    if (user.role === 'free') {
+      user.freeVideosUsed += 1;
+      user.lastFreeVideoDate = new Date();
+      remainingLimit = Math.max(0, 3 - user.freeVideosUsed);
+      await user.save();
+    } else if (user.role === 'premium') {
+      user.videoLimit -= 1;
+      if (user.videoLimit <= 0) {
+        user.role = 'free';
+        user.videoLimit = 0;
+      }
+      remainingLimit = user.videoLimit;
+      await user.save();
+    } else {
+      remainingLimit = Infinity; // admin
+    }
 
     const videoId = req.file.filename; // Keeping as ID for reference
     
     console.log(`[Step 1] Complete. Found ${utterances.length} utterances. Video ID: ${videoId}`);
     res.json({ 
       utterances,
-      videoId
+      videoId,
+      remainingLimit,
+      role: user.role,
+      freeVideosUsed: user.freeVideosUsed,
+      lastFreeVideoDate: user.lastFreeVideoDate
     });
   } catch (error) {
     console.error('Step 1 Error:', error);
@@ -226,14 +322,26 @@ app.post('/api/step1-extract', upload.single('audio'), async (req, res) => {
 });
 
 // Step 2: Translate English text to Burmese
-app.post('/api/step2-translate', async (req, res) => {
+app.post('/api/step2-translate', requireAuth, async (req, res) => {
   try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.role === 'restrict') return res.status(403).json({ error: 'သင့်အကောင့်ကို ပိတ်ပင်ထားပါသည်။ (Your account has been restricted.)' });
+
     const { utterances } = req.body;
     if (!utterances || !Array.isArray(utterances)) {
       return res.status(400).json({ error: 'Invalid utterances array provided' });
     }
+    if (utterances.length > 500) {
+      return res.status(400).json({ error: 'Too many utterances. Maximum allowed is 500.' });
+    }
 
     let apiKey = req.body.apiKey;
+    
+    if (user.role === 'free' && (!apiKey || apiKey.trim() === '')) {
+      return res.status(403).json({ error: 'Free users must provide their own API key. Access to Admin API Key is forbidden.' });
+    }
+
     if (!apiKey) {
       const settings = await Settings.findOne();
       if (settings && settings.geminiKey) {
@@ -257,11 +365,18 @@ app.post('/api/step2-translate', async (req, res) => {
 });
 
 // Step 3: Generate TTS and Mix Audio
-app.post('/api/step3-tts', async (req, res) => {
+app.post('/api/step3-tts', requireAuth, async (req, res) => {
   try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.role === 'restrict') return res.status(403).json({ error: 'သင့်အကောင့်ကို ပိတ်ပင်ထားပါသည်။ (Your account has been restricted.)' });
+
     const { translatedUtterances, voice } = req.body;
     if (!translatedUtterances || !Array.isArray(translatedUtterances)) {
       return res.status(400).json({ error: 'Invalid translatedUtterances array provided' });
+    }
+    if (translatedUtterances.length > 500) {
+      return res.status(400).json({ error: 'Too many utterances. Maximum allowed is 500.' });
     }
     
     console.log(`[Step 3] Generating TTS for ${translatedUtterances.length} utterances with voice ${voice || 'default'}...`);
@@ -299,6 +414,40 @@ app.post('/api/step3-tts', async (req, res) => {
   } catch (error) {
     console.error('Step 3 Error:', error);
     res.status(500).json({ error: 'TTS & Mixing failed', details: error.message });
+  }
+});
+
+app.post('/api/tts-preview', requireAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.role === 'restrict') return res.status(403).json({ error: 'သင့်အကောင့်ကို ပိတ်ပင်ထားပါသည်။ (Your account has been restricted.)' });
+
+    const { voice, text } = req.body;
+    
+    if (text && text.length > 500) {
+      return res.status(400).json({ error: 'Text too long for preview. Maximum 500 characters.' });
+    }
+    // Sanitize pitch — edge-tts requires format like "+0Hz", "0Hz" is invalid
+    let pitch = (typeof voice === 'object' && voice.pitch) ? voice.pitch : '+0Hz';
+    if (!pitch.startsWith('+') && !pitch.startsWith('-')) {
+      pitch = '+' + pitch;
+    }
+    if (!pitch.endsWith('Hz')) {
+      pitch = pitch + 'Hz';
+    }
+    const synthOpts = {
+      voice: typeof voice === 'string' ? voice : (voice.voice || 'my-MM-NilarNeural'),
+      rate: '+30%',   // CLAUDE.md hard rule: always +30%
+      pitch: pitch,
+      volume: '+0%'
+    };
+    const audioBuffer = await synth(text || 'မင်္ဂလာပါ။ ဒါကတော့ အသံအစမ်း နားထောင်ကြည့်တာပါ။', synthOpts);
+    res.set('Content-Type', 'audio/mpeg');
+    res.send(audioBuffer);
+  } catch (e) {
+    console.error('TTS Preview Error:', e);
+    res.status(500).json({ error: String(e.message || e) });
   }
 });
 

@@ -16,8 +16,20 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['free', 'premium', 'admin'],
+    enum: ['free', 'premium', 'admin', 'restrict'],
     default: 'free' // First user logic will be handled in the route
+  },
+  videoLimit: {
+    type: Number,
+    default: 0
+  },
+  freeVideosUsed: {
+    type: Number,
+    default: 0
+  },
+  lastFreeVideoDate: {
+    type: Date,
+    default: null
   }
 }, {
   timestamps: true

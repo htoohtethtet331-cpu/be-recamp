@@ -24,43 +24,43 @@ export const AuthProvider = ({ children }) => {
           setUser(decoded);
           localStorage.setItem('token', token);
           
-          // Fetch fresh token to update role if changed by admin
-          fetch(`${apiUrl}/auth/me`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          })
-          .then(res => res.json())
-          .then(data => {
-            if (data.token && data.user) {
-              if (data.user.role !== decoded.role) {
-                setToken(data.token);
+            // Fetch fresh token to update role or limit if changed by admin
+            fetch(`${apiUrl}/auth/me`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            })
+            .then(res => res.json())
+            .then(data => {
+              if (data.token && data.user) {
+                if (data.user.role !== decoded.role || data.user.videoLimit !== decoded.videoLimit) {
+                  setToken(data.token);
+                }
               }
-            }
-          })
-          .catch(err => console.error('Failed to refresh user', err));
+            })
+            .catch(err => console.error('Failed to refresh user', err));
+          }
+        } catch (error) {
+          logout();
         }
-      } catch (error) {
-        logout();
+      } else {
+        setUser(null);
+        localStorage.removeItem('token');
       }
-    } else {
+    }, [token]);
+
+    const login = (newToken) => {
+      setToken(newToken);
+    };
+
+    const logout = () => {
+      setToken(null);
       setUser(null);
       localStorage.removeItem('token');
-    }
-  }, [token]);
+      window.location.href = '/'; // Force redirect to home on logout
+    };
 
-  const login = (newToken) => {
-    setToken(newToken);
-  };
-
-  const logout = () => {
-    setToken(null);
-    setUser(null);
-    localStorage.removeItem('token');
-    window.location.href = '/'; // Force redirect to home on logout
-  };
-
-  return (
-    <AuthContext.Provider value={{ user, token, login, logout }}>
-      {children}
-    </AuthContext.Provider>
-  );
+    return (
+      <AuthContext.Provider value={{ user, token, login, logout, setUser }}>
+        {children}
+      </AuthContext.Provider>
+    );
 };
