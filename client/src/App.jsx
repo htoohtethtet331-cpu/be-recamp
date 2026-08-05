@@ -302,10 +302,12 @@ function App() {
   const [autoProgress, setAutoProgress] = useState(0);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
 
-  // Use VITE_API_URL for separate frontend deployments (like Netlify), fallback to /api if unified
-  const apiUrl = import.meta.env.PROD
-    ? (import.meta.env.VITE_API_URL || '/api')
+  // Use VITE_API_URL for separate frontend deployments (like Netlify), fallback to production domain
+  const rawApiUrl = import.meta.env.PROD
+    ? (import.meta.env.VITE_API_URL || 'https://deeplearnaixrecapstudio.app/api')
     : `http://${window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname}:5001/api`;
+  // Strip trailing slash to prevent double-slash in URLs
+  const apiUrl = rawApiUrl.replace(/\/+$/, '');
 
   const [pricingPackages, setPricingPackages] = useState([]);
 
