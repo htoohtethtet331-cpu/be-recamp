@@ -37,6 +37,8 @@ const port = process.env.PORT || 5000;
 const allowedOrigins = [
   /\.netlify\.app$/,
   /\.netlify\.com$/,
+  'https://deeplearnaixrecapstudio.app',
+  'https://www.deeplearnaixrecapstudio.app',
   'http://localhost:5173',
   'http://localhost:5174',
   'http://127.0.0.1:5173',
