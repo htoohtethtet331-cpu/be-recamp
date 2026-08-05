@@ -240,4 +240,90 @@ const mixAudioOnly = async (utterances, outputDir, videoDuration) => {
   return { finalAudioPath, completeVideoSegments: videoOnlySegments, updatedUtterances };
 };
 
-module.exports = { mixAudioOnly };
+
+// ── Server-Side Video Renderer ──────────────────────────────────────────────────
+// Premium/Admin only. Takes the original video path, the final mixed audio path,
+// and the videoSegments array from Step 3 to produce the final retimed video.
+const renderVideo = async (videoPath, audioPath, videoSegments, videoDuration, outputDir) => {
+  const outputPath = path.join(outputDir, `render_${Date.now()}.mp4`);
+  const filterPath = path.join(outputDir, `filter_${Date.now()}.txt`);
+
+  // Build valid segments (same logic as client-side)
+  const validSegs = videoSegments.filter(
+    (seg) => typeof seg.originalStart === 'number' &&
+      typeof seg.originalEnd === 'number' &&
+      seg.originalEnd > seg.originalStart + 0.001
+  );
+
+  // Append a tail segment if there's silence at the end
+  if (validSegs.length > 0 && videoDuration > 0) {
+    const lastSeg = validSegs[validSegs.length - 1];
+    if (videoDuration - lastSeg.originalEnd > 0.1) {
+      validSegs.push({
+        originalStart: lastSeg.originalEnd,
+        originalEnd: null, // means "to end of video"
+        videoSpeed: 1.0
+      });
+    }
+  }
+
+  let filterScript = '';
+  const ffmpegArgs = [
+    '-i', videoPath,
+    '-i', audioPath
+  ];
+
+  if (validSegs.length > 1) {
+    const splitLabels = validSegs.map((_, i) => `[s${i}]`).join('');
+    filterScript += `[0:v]split=${validSegs.length}${splitLabels};\n`;
+
+    const segLabels = validSegs.map((seg, i) => {
+      const speed = typeof seg.videoSpeed === 'number' && seg.videoSpeed > 0 ? seg.videoSpeed : 1.0;
+      if (seg.originalEnd === null) {
+        filterScript += `[s${i}]trim=start=${seg.originalStart.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[v${i}];\n`;
+      } else {
+        filterScript += `[s${i}]trim=${seg.originalStart.toFixed(4)}:${seg.originalEnd.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[v${i}];\n`;
+      }
+      return `[v${i}]`;
+    });
+
+    filterScript += `${segLabels.join('')}concat=n=${validSegs.length}:v=1:a=0[outv]\n`;
+
+  } else if (validSegs.length === 1) {
+    const seg = validSegs[0];
+    const speed = typeof seg.videoSpeed === 'number' && seg.videoSpeed > 0 ? seg.videoSpeed : 1.0;
+    if (seg.originalEnd === null) {
+      filterScript += `[0:v]trim=start=${seg.originalStart.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[outv]\n`;
+    } else {
+      filterScript += `[0:v]trim=${seg.originalStart.toFixed(4)}:${seg.originalEnd.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[outv]\n`;
+    }
+  } else {
+    filterScript += `[0:v]null[outv]\n`;
+  }
+
+  fs.writeFileSync(filterPath, filterScript);
+
+  ffmpegArgs.push(
+    '-filter_complex_script', filterPath,
+    '-map', '[outv]',
+    '-map', '1:a',
+    '-c:v', 'libx264',
+    '-preset', 'fast',       // faster than 'medium', much faster than client-side ultrafast+wasm overhead
+    '-crf', '23',            // good quality
+    '-c:a', 'aac',
+    '-b:a', '192k',
+    '-shortest',
+    '-y',
+    outputPath
+  );
+
+  try {
+    await runFfmpeg(ffmpegArgs);
+  } finally {
+    try { fs.unlinkSync(filterPath); } catch (_) {}
+  }
+
+  return outputPath;
+};
+
+module.exports = { mixAudioOnly, renderVideo };

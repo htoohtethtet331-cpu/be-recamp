@@ -9,6 +9,10 @@ const settingsSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  groqKeys: {
+    type: [String],
+    default: ['', '', '', '', '']
+  },
   assemblyAiKey: {
     type: String,
     default: ''

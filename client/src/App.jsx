@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
-import { Check, CheckCircle2, Download, RefreshCw, Play, Loader2, AlertTriangle, SlidersHorizontal, ArrowRight, Video, Sparkles, Copy, Settings, LogOut, UploadCloud, Headphones, Zap, X, CreditCard, HelpCircle } from 'lucide-react';
+import { Check, CheckCircle2, Download, RefreshCw, Play, Loader2, AlertTriangle, SlidersHorizontal, ArrowRight, Video, Sparkles, Copy, Settings, LogOut, UploadCloud, Headphones, Zap, X, CreditCard, HelpCircle, KeyRound, ChevronDown } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from './context/AuthContext';
@@ -26,13 +26,13 @@ export const getLimitDisplay = (user) => {
   return `| Limit: ${user?.videoLimit || 0}`;
 };
 
-const AutoLoadingOverlay = ({ step, progress, onCancel }) => {
+const AutoLoadingOverlay = ({ step, progress, onCancel, isServerRender }) => {
   const steps = [
     'Fetching',
     'Transcribing',
     'Translating',
     'Synthesizing',
-    'Rendering'
+    isServerRender ? '🚀 Server Rendering' : 'Rendering'
   ];
 
   // Calculate stroke dashoffset for circular progress
@@ -395,6 +395,7 @@ function App() {
   const [copySuccess, setCopySuccess] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [showApiKeyConfig, setShowApiKeyConfig] = useState(!localStorage.getItem('assemblyAiKey'));
 
   // Sync Player States (Simplified)
   const videoRef = useRef(null);
@@ -582,10 +583,41 @@ function App() {
 
       const ttsRes = await axios.post(`${apiUrl}/step3-tts`, { translatedUtterances, voice: voicePayload, videoDuration }, { headers: { Authorization: `Bearer ${token}` } });
       const audioUrl = ttsRes.data.url;
+      const audioFilename = ttsRes.data.finalAudioFilename;
 
       setAutoProgress(75);
 
-      // Automatic Merge
+      // ── Premium/Admin: Server-Side Render (faster) ──
+      if (user?.role === 'premium' || user?.role === 'admin') {
+        setAutoStep(5); setAutoProgress(80);
+
+        const renderForm = new FormData();
+        renderForm.append('video', file);
+        renderForm.append('audioFilename', audioFilename);
+        renderForm.append('videoSegmentsJson', JSON.stringify(ttsRes.data.videoSegments || []));
+        renderForm.append('videoDuration', String(videoDuration));
+
+        const renderRes = await axios.post(`${apiUrl}/step4-render`, renderForm, {
+          headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${token}` },
+          onUploadProgress: (progressEvent) => {
+            const uploadPct = (progressEvent.loaded / (progressEvent.total || 1)) * 100;
+            // Upload is 80–90%, server processing is 90–100%
+            setAutoProgress(80 + uploadPct * 0.10);
+          }
+        });
+
+        setAutoProgress(100);
+        setAutoStep(6);
+
+        setUtterances(ttsRes.data.updatedUtterances || ttsRes.data.utterances || []);
+        setPreviewAudioUrl(audioUrl);
+        setVideoSegments(ttsRes.data.videoSegments || []);
+        setFinalVideoUrl(renderRes.data.url);
+        setLoading(false);
+        return; // done — skip client-side render below
+      }
+
+      // ── Free users: Client-Side FFmpeg.wasm Render ──
       const fetchedAudioData = await fetchFile(audioUrl);
 
       const renderFfmpeg = renderFfmpegRef.current;
@@ -597,13 +629,13 @@ function App() {
       await ffmpeg.deleteFile('extracted_audio.mp3').catch(() => { });
 
       const utterancesArray = ttsRes.data.updatedUtterances || ttsRes.data.utterances || [];
-      const videoSegments = ttsRes.data.videoSegments || [];
+      const videoSegmentsArr = ttsRes.data.videoSegments || [];
       const audioDurationMs = utterancesArray.length > 0 ? (utterancesArray[utterancesArray.length - 1].newEndMs || utterancesArray[utterancesArray.length - 1].end || 0) : 0;
 
 
       // ── CLAUDE.md Step 7: N retimed segments (trim+setpts per block) concatenated ──
       // Filter out zero-length or invalid segments first so split count matches concat count
-      const validSegs = videoSegments.filter(
+      const validSegs = videoSegmentsArr.filter(
         (seg) => typeof seg.originalStart === 'number' &&
           typeof seg.originalEnd === 'number' &&
           seg.originalEnd > seg.originalStart + 0.001
@@ -1590,7 +1622,7 @@ ${textArray}`;
             )}
           </div>
         </div>
-        <AutoLoadingOverlay step={autoStep} progress={autoProgress} onCancel={handleCancelAutoProcess} />
+        <AutoLoadingOverlay step={autoStep} progress={autoProgress} onCancel={handleCancelAutoProcess} isServerRender={user?.role === 'premium' || user?.role === 'admin'} />
         <UserProfileDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} user={user} logout={logout} packages={pricingPackages} />
       </div>
     );
@@ -1738,6 +1770,47 @@ ${textArray}`;
           {/* Main Content (Scrollable) */}
           <div className="p-6 space-y-6 overflow-y-auto grow">
 
+            {/* API Key Configuration Inline Layout */}
+            <div className="bg-[#1e293b]/60 border border-purple-500/30 rounded-2xl p-4 sm:p-5 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/3"></div>
+              
+              <div className="flex items-center justify-between relative z-10">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="w-5 h-5 text-purple-400" />
+                  <h3 className="font-bold text-white text-sm sm:text-base">AssemblyAI API Key (Required)</h3>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-[10px] sm:text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full font-bold border border-purple-500/30 shadow-sm">
+                    Local Storage
+                  </div>
+                  <button 
+                    onClick={() => setShowApiKeyConfig(!showApiKeyConfig)}
+                    className="p-1 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
+                  >
+                    <ChevronDown className={`w-5 h-5 transition-transform duration-300 ${showApiKeyConfig ? 'rotate-180' : ''}`} />
+                  </button>
+                </div>
+              </div>
+              
+              {showApiKeyConfig && (
+                <div className="relative z-10 mt-4 animate-in slide-in-from-top-2 fade-in duration-200">
+                  <input
+                    type="password"
+                    value={assemblyAiKey}
+                    onChange={(e) => { 
+                      setAssemblyAiKey(e.target.value); 
+                      localStorage.setItem('assemblyAiKey', e.target.value); 
+                    }}
+                    placeholder="Enter your AssemblyAI key..."
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-gray-500 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 transition-all text-sm"
+                  />
+                  <p className="text-[10px] sm:text-xs text-gray-400 mt-2 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-green-400" /> Key is saved locally and only used for your transcriptions.
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* Step 1: Upload Section */}
             {step >= 1 && (
               <div className="bg-white/5 backdrop-blur-xl rounded-3xl p-6 border border-white/5 mb-6">
@@ -1778,24 +1851,7 @@ ${textArray}`;
                   </div>
                 )}
 
-                {/* AssemblyAI API Key Input */}
-                {user?.role === 'free' && (
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium text-gray-300 mb-1.5 flex justify-between items-center">
-                      <span>AssemblyAI API Key (Required)</span>
-                    </label>
-                    <input
-                      type="password"
-                      value={assemblyAiKey}
-                      onChange={(e) => { setAssemblyAiKey(e.target.value); localStorage.setItem('assemblyAiKey', e.target.value); }}
-                      placeholder="Enter your own AssemblyAI key..."
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-gray-500 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 transition-all text-sm"
-                    />
-                    <p className="text-xs text-gray-500 mt-1.5">
-                      Free users must provide their own AssemblyAI key.
-                    </p>
-                  </div>
-                )}
+                {/* Removed inline AssemblyAI API Key Input */}
 
                 {step === 1 && (
                   <button

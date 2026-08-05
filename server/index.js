@@ -9,7 +9,7 @@ const path = require('path');
 const { getTranscriptAndTimestamps } = require('./services/assemblyai');
 const { translateUtterances } = require('./services/gemini');
 const { generateTTSForUtterances, synth } = require('./services/tts');
-const { mixAudioOnly } = require('./services/ffmpeg');
+const { mixAudioOnly, renderVideo } = require('./services/ffmpeg');
 const connectDB = require('./config/db');
 const Settings = require('./models/Settings');
 const { OAuth2Client } = require('google-auth-library');
@@ -33,7 +33,27 @@ const app = express();
 app.set('trust proxy', 1); // Trust Render's proxy to get correct https protocol
 const port = process.env.PORT || 5000;
 
-app.use(cors());
+// CORS: Allow Netlify frontend + local dev
+const allowedOrigins = [
+  /\.netlify\.app$/,
+  /\.netlify\.com$/,
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5173',
+  'http://118.27.151.80',
+];
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    const allowed = allowedOrigins.some(o =>
+      typeof o === 'string' ? o === origin : o.test(origin)
+    );
+    if (allowed) return callback(null, true);
+    callback(new Error(`CORS blocked: ${origin}`));
+  },
+  credentials: true,
+}));
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -53,6 +73,12 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage: storage,
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit for audio files to prevent DoS
+});
+
+// Large video upload multer for premium/admin server rendering (1.5GB limit)
+const videoUpload = multer({
+  storage: storage,
+  limits: { fileSize: 1.5 * 1024 * 1024 * 1024 } // 1.5GB
 });
 
 // Cloudinary config
@@ -142,13 +168,14 @@ app.get('/api/admin/keys', requireAdmin, async (req, res) => {
 // Update API Keys & Packages
 app.post('/api/admin/keys', requireAdmin, async (req, res) => {
   try {
-    const { geminiKey, groqKey, assemblyAiKey, packages } = req.body;
+    const { geminiKey, groqKey, groqKeys, assemblyAiKey, packages } = req.body;
     let settings = await Settings.findOne();
     if (!settings) {
-      settings = await Settings.create({ geminiKey, groqKey, assemblyAiKey, packages });
+      settings = await Settings.create({ geminiKey, groqKey, groqKeys, assemblyAiKey, packages });
     } else {
       if (geminiKey !== undefined) settings.geminiKey = geminiKey;
       if (groqKey !== undefined) settings.groqKey = groqKey;
+      if (groqKeys !== undefined) settings.groqKeys = groqKeys;
       if (assemblyAiKey !== undefined) settings.assemblyAiKey = assemblyAiKey;
       if (packages !== undefined) settings.packages = packages;
       await settings.save();
@@ -252,16 +279,8 @@ app.post('/api/step1-extract', requireAuth, upload.single('audio'), async (req, 
     // We already have the audio extracted by the client!
     let assemblyAiKey = req.body.assemblyAiKey;
     
-    if (user.role === 'free' && !assemblyAiKey) {
-      return res.status(403).json({ error: 'Free users must provide their own AssemblyAI API key.' });
-    }
-    
-    // Fallback to database key
     if (!assemblyAiKey) {
-      const settings = await Settings.findOne();
-      if (settings && settings.assemblyAiKey) {
-        assemblyAiKey = settings.assemblyAiKey;
-      }
+      return res.status(403).json({ error: 'Everyone must provide their own AssemblyAI API key.' });
     }
     
     // Also prepare Groq key from database to pass it if needed (currently AssemblyAI service uses process.env.GROQ_API_KEY)
@@ -331,10 +350,18 @@ app.post('/api/step2-translate', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Free users must provide their own API key. Access to Admin API Key is forbidden.' });
     }
 
-    if (!apiKey) {
+    let groqKeys = [];
+    if (!apiKey || apiKey.trim() === '') {
       const settings = await Settings.findOne();
-      if (settings && settings.geminiKey) {
+      if (settings) {
         apiKey = settings.geminiKey;
+        groqKeys = settings.groqKeys || [];
+      }
+    } else {
+      // Even if user provides a gemini key, still fetch groqKeys for translation
+      const settings = await Settings.findOne();
+      if (settings) {
+        groqKeys = settings.groqKeys || [];
       }
     }
 
@@ -342,8 +369,8 @@ app.post('/api/step2-translate', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Gemini API Key is required (provide in request or save in Admin Dashboard)' });
     }
     
-    console.log(`[Step 2] Received ${utterances.length} utterances for translation. Using API Key starting with: ${apiKey.substring(0, 10)}...`);
-    const translatedUtterances = await translateUtterances(utterances, apiKey);
+    console.log(`[Step 2] Received ${utterances.length} utterances for translation. Primary Groq Keys: ${groqKeys.filter(k => k).length}, Fallback Gemini Key starting with: ${apiKey.substring(0, 10)}...`);
+    const translatedUtterances = await translateUtterances(utterances, apiKey, groqKeys);
     
     console.log(`[Step 2] Translation complete.`);
     res.json({ translatedUtterances });
@@ -441,6 +468,57 @@ app.post('/api/tts-preview', requireAuth, async (req, res) => {
 });
 
 
+// Step 4 (Server Render): Premium/Admin only — render video on server using native FFmpeg
+app.post('/api/step4-render', requireAuth, videoUpload.single('video'), async (req, res) => {
+  let videoPath = null;
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.role === 'restrict') return res.status(403).json({ error: 'Your account is restricted.' });
+    if (user.role === 'free') return res.status(403).json({ error: 'Server rendering is only available for Premium and Admin users.' });
+
+    if (!req.file) return res.status(400).json({ error: 'No video file provided' });
+
+    const { audioFilename, videoSegmentsJson, videoDuration } = req.body;
+    if (!audioFilename) return res.status(400).json({ error: 'audioFilename is required' });
+
+    const audioPath = path.join(__dirname, 'uploads', audioFilename);
+    if (!fs.existsSync(audioPath)) {
+      return res.status(404).json({ error: 'Audio file not found on server. Please re-process Step 3.' });
+    }
+
+    videoPath = req.file.path;
+    let videoSegments = [];
+    try {
+      videoSegments = JSON.parse(videoSegmentsJson || '[]');
+    } catch (e) {
+      return res.status(400).json({ error: 'Invalid videoSegmentsJson' });
+    }
+
+    const dur = parseFloat(videoDuration) || 0;
+    console.log(`[Step 4 Server Render] User: ${user.email}, Video: ${req.file.originalname}, Segments: ${videoSegments.length}`);
+
+    const outputDir = path.join(__dirname, 'uploads');
+    const outputPath = await renderVideo(videoPath, audioPath, videoSegments, dur, outputDir);
+
+    const baseUrl = req.protocol + '://' + req.get('host');
+    const outputUrl = `${baseUrl}/uploads/${path.basename(outputPath)}`;
+
+    console.log(`[Step 4 Server Render] Done! Output: ${outputUrl}`);
+    
+    // Cleanup uploaded video (keep rendered output for download)
+    if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+
+    res.json({ url: outputUrl, filename: path.basename(outputPath) });
+  } catch (error) {
+    console.error('[Step 4 Server Render] Error:', error);
+    if (videoPath && fs.existsSync(videoPath)) {
+      try { fs.unlinkSync(videoPath); } catch (_) {}
+    }
+    res.status(500).json({ error: 'Server rendering failed', details: error.message });
+  }
+});
+
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
   // Set static folder
@@ -472,9 +550,9 @@ const server = app.listen(port, () => {
 });
 
 // Disable timeouts to prevent 408 errors during large uploads
-server.requestTimeout = 0;
-server.headersTimeout = 0;
-server.keepAliveTimeout = 0;
-server.setTimeout(0);
+// server.requestTimeout = 0;
+// server.headersTimeout = 0;
+// server.keepAliveTimeout = 0;
+// server.setTimeout(0);
 
 

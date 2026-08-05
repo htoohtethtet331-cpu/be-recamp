@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { KeyRound, CheckCircle2, Loader2, ArrowLeft, Users, ShieldAlert, Search } from 'lucide-react';
+import { KeyRound, CheckCircle2, Loader2, ArrowLeft, Users, ShieldAlert, Search, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function AdminDashboard({ onBack }) {
@@ -12,7 +12,8 @@ export default function AdminDashboard({ onBack }) {
     : `http://${window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname}:5001/api`;
 
   // Keys state
-  const [keys, setKeys] = useState({ geminiKey: '', groqKey: '', assemblyAiKey: '', packages: [] });
+  const [keys, setKeys] = useState({ geminiKey: '', groqKey: '', groqKeys: ['', '', '', '', ''], assemblyAiKey: '', packages: [] });
+  const [showKeys, setShowKeys] = useState({ gemini: false, groq1: false, groq2: false, groq3: false, groq4: false, groq5: false, assembly: false });
   const [loadingKeys, setLoadingKeys] = useState(true);
   const [savingKeys, setSavingKeys] = useState(false);
   const [keyMessage, setKeyMessage] = useState('');
@@ -32,9 +33,14 @@ export default function AdminDashboard({ onBack }) {
     const fetchKeys = async () => {
       try {
         const response = await axios.get(`${apiUrl}/admin/keys`, apiConfig);
+        const fetchedGroqKeys = response.data.groqKeys && response.data.groqKeys.length === 5 
+          ? response.data.groqKeys 
+          : ['', '', '', '', ''];
+        
         setKeys({
           geminiKey: response.data.geminiKey || '',
           groqKey: response.data.groqKey || '',
+          groqKeys: fetchedGroqKeys,
           assemblyAiKey: response.data.assemblyAiKey || '',
           packages: response.data.packages || []
         });
@@ -180,18 +186,47 @@ export default function AdminDashboard({ onBack }) {
           ) : (
             <form onSubmit={handleSaveKeys} className="space-y-5">
               <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-1.5">Gemini API Key </label>
-                <input type="password" value={keys.geminiKey} onChange={(e) => setKeys({ ...keys, geminiKey: e.target.value })} className="w-full bg-black/20 border border-white/10 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-600" placeholder="AIzaSy..." />
+                <label className="block text-sm font-semibold text-gray-300 mb-1.5">Gemini API Key (Fallback Translation)</label>
+                <div className="relative">
+                  <input type={showKeys.gemini ? "text" : "password"} value={keys.geminiKey} onChange={(e) => setKeys({ ...keys, geminiKey: e.target.value })} className="w-full bg-black/20 border border-white/10 text-white rounded-xl pl-4 pr-12 py-3 outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-600" placeholder="AIzaSy..." />
+                  <button type="button" onClick={() => setShowKeys({ ...showKeys, gemini: !showKeys.gemini })} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200">
+                    {showKeys.gemini ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-1.5">Groq API Key</label>
-                <input type="password" value={keys.groqKey} onChange={(e) => setKeys({ ...keys, groqKey: e.target.value })} className="w-full bg-black/20 border border-white/10 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-600" placeholder="gsk_..." />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-1.5">AssemblyAI API Key</label>
-                <input type="password" value={keys.assemblyAiKey} onChange={(e) => setKeys({ ...keys, assemblyAiKey: e.target.value })} className="w-full bg-black/20 border border-white/10 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-600" />
+              
+              <div className="space-y-3 pt-2">
+                <label className="block text-sm font-semibold text-gray-300">Groq API Keys (Primary Translation)</label>
+                <p className="text-xs text-gray-400 -mt-2 mb-2">Configure up to 5 Groq keys. The system will cycle through them automatically if one hits a rate limit.</p>
+                {[0, 1, 2, 3, 4].map((index) => (
+                  <div key={`groq-${index}`} className="relative">
+                    <input 
+                      type={showKeys[`groq${index + 1}`] ? "text" : "password"} 
+                      value={keys.groqKeys[index] || ''} 
+                      onChange={(e) => {
+                        const newGroqKeys = [...keys.groqKeys];
+                        newGroqKeys[index] = e.target.value;
+                        setKeys({ ...keys, groqKeys: newGroqKeys });
+                      }} 
+                      className="w-full bg-black/20 border border-white/10 text-white rounded-xl pl-4 pr-12 py-3 outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-600" 
+                      placeholder={`gsk_... (Key ${index + 1})`} 
+                    />
+                    <button type="button" onClick={() => setShowKeys({ ...showKeys, [`groq${index + 1}`]: !showKeys[`groq${index + 1}`] })} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200">
+                      {showKeys[`groq${index + 1}`] ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                ))}
               </div>
 
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-1.5">AssemblyAI API Key (Transcription Fallback)</label>
+                <div className="relative">
+                  <input type={showKeys.assembly ? "text" : "password"} value={keys.assemblyAiKey} onChange={(e) => setKeys({ ...keys, assemblyAiKey: e.target.value })} className="w-full bg-black/20 border border-white/10 text-white rounded-xl pl-4 pr-12 py-3 outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-600" />
+                  <button type="button" onClick={() => setShowKeys({ ...showKeys, assembly: !showKeys.assembly })} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200">
+                    {showKeys.assembly ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
               {/* Pricing Packages */}
               <div className="pt-6 border-t border-white/10 mt-6">
                 <div className="flex justify-between items-center mb-4">

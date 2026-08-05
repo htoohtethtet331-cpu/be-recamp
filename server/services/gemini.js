@@ -1,4 +1,18 @@
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const Groq = require('groq-sdk');
+
+async function callGroqTranslation(apiKey, prompt) {
+  const groq = new Groq({ apiKey });
+  const response = await groq.chat.completions.create({
+    messages: [
+      { role: 'user', content: prompt }
+    ],
+    model: 'llama-3.3-70b-versatile',
+    temperature: 0.1,
+    response_format: { type: 'json_object' }
+  });
+  return response.choices[0].message.content;
+}
 
 // Retry on 429/503 with backoff. 403 = fatal, stop immediately.
 // CLAUDE.md: "back off 3s, 10s, 25s ... translation that fails is fatal, not skippable"
@@ -109,9 +123,9 @@ async function callGeminiWithRetry(apiKey, prompt, retries = 3) {
   }
 }
 
-const translateUtterances = async (utterances, apiKey) => {
+const translateUtterances = async (utterances, geminiKey, groqKeys = []) => {
   if (!utterances || utterances.length === 0) return [];
-  if (!apiKey) throw new Error('API Key is required.');
+  if (!geminiKey) throw new Error('Gemini API Key is required as a fallback.');
 
   // Reduced from 35 to 15 to prevent exceeding 1500 max_tokens limit
   const BATCH_SIZE = 15;
@@ -160,12 +174,33 @@ __TRANSCRIPT__`;
       .replace('__TRANSCRIPT__', textArray);
 
     let content;
-    try {
-      content = await callGeminiWithRetry(apiKey, finalPrompt);
-    } catch (err) {
-      // CLAUDE.md: "a translation request that still fails after retries is fatal, not skippable"
-      console.error(`[Gemini] FATAL — batch at index ${i} failed:`, err.message);
-      throw err; // do NOT fallback to original text
+    let translationSuccess = false;
+
+    // Try Groq first with round-robin fallback
+    const validGroqKeys = groqKeys.filter(k => k && k.trim() !== '');
+    for (let g = 0; g < validGroqKeys.length; g++) {
+      try {
+        console.log(`[Groq] Attempting translation with Groq Key ${g + 1}/${validGroqKeys.length}...`);
+        content = await callGroqTranslation(validGroqKeys[g], finalPrompt);
+        translationSuccess = true;
+        break; // Success, break out of Groq keys loop
+      } catch (err) {
+        console.warn(`[Groq] Key ${g + 1} failed: ${err.message}. Trying next key if available...`);
+      }
+    }
+
+    // Fallback to Gemini if Groq failed or no Groq keys provided
+    if (!translationSuccess) {
+      if (validGroqKeys.length > 0) {
+        console.warn(`[Groq] All ${validGroqKeys.length} Groq keys failed. Falling back to Gemini...`);
+      }
+      try {
+        content = await callGeminiWithRetry(geminiKey, finalPrompt);
+      } catch (err) {
+        // CLAUDE.md: "a translation request that still fails after retries is fatal, not skippable"
+        console.error(`[Gemini] FATAL — batch at index ${i} failed:`, err.message);
+        throw err; // do NOT fallback to original text
+      }
     }
 
     let parsed;
