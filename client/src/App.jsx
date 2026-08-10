@@ -978,68 +978,15 @@ function App() {
       await renderFfmpeg.writeFile('input.mp4', await fetchFile(file));
       await renderFfmpeg.writeFile('tts.mp3', await fetchFile(downloadUrl));
 
-      // 4. Build FFmpeg command based on whether stretching is actually needed
-      let needsStretching = false;
-      if (renderMode === 'premium' && videoSegments && videoSegments.length > 0) {
-        needsStretching = videoSegments.some(seg => Math.abs(seg.videoSpeed - 1.0) > 0.001);
-      }
-
-      let filterScript = '';
       const ffmpegArgs = [
         '-i', 'input.mp4',
-        '-i', 'tts.mp3'
-      ];
-
-      if (needsStretching) {
-        let concatInputs = '';
-        let vIndex = 0;
-
-        // Ensure the array covers the whole video duration
-        const fullSegments = [...videoSegments];
-        const finalEnd = fullSegments[fullSegments.length - 1].originalEnd;
-
-        let splitOutputs = '';
-        for (let i = 0; i < fullSegments.length; i++) {
-          splitOutputs += `[s${i}]`;
-        }
-        filterScript += `[0:v]split=${fullSegments.length}${splitOutputs};\n`;
-
-        fullSegments.forEach((seg) => {
-          if (seg.originalStart >= seg.originalEnd) return;
-          filterScript += `[s${vIndex}]trim=${seg.originalStart}:${seg.originalEnd},setpts=${(1 / seg.videoSpeed).toFixed(4)}*(PTS-STARTPTS)[v${vIndex}];\n`;
-          concatInputs += `[v${vIndex}]`;
-          vIndex++;
-        });
-
-        filterScript += `${concatInputs}concat=n=${vIndex}:v=1:a=0[outv]\n`;
-
-        await renderFfmpeg.writeFile('filter.txt', new TextEncoder().encode(filterScript));
-
-        ffmpegArgs.push(
-          '-filter_complex_script', 'filter.txt',
-          '-map', '[outv]'
-        );
-      } else {
-        // No stretching needed, we can just copy the video stream!
-        ffmpegArgs.push('-map', '0:v');
-      }
-
-      ffmpegArgs.push('-map', '1:a');
-
-      if (needsStretching) {
-        ffmpegArgs.push(
-          '-c:v', 'libx264',
-          '-preset', 'ultrafast'
-        );
-      } else {
-        ffmpegArgs.push('-c:v', 'copy');
-      }
-
-      ffmpegArgs.push(
+        '-i', 'tts.mp3',
+        '-c:v', 'copy',
         '-c:a', 'aac',
-        // '-shortest', // Removed so it plays until the video ends
-        'output.mp4'
-      );
+        '-map', '0:v:0',
+        '-map', '1:a:0',
+        '-y', 'output.mp4'
+      ];
 
       try {
         await renderFfmpeg.exec(ffmpegArgs);
@@ -1314,59 +1261,17 @@ ${textArray}`;
       await ffmpeg.writeFile('merge_input_video.mp4', await fetchFile(file));
       await ffmpeg.writeFile('merge_input_audio.mp3', await fetchFile(downloadUrl));
 
-      // 2. Build per-block video retiming filter — CLAUDE.md Step 7
-      // Same logic as auto mode: N retimed segments (trim+setpts per block) concatenated
-      const validSegs = (videoSegments || []).filter(
-        (seg) => typeof seg.originalStart === 'number' &&
-          typeof seg.originalEnd === 'number' &&
-          seg.originalEnd > seg.originalStart + 0.001
-      );
-
-      let filterScript = '';
+      // 2. Simple mux: keep original video speed, drop original audio, add new mixed audio
       const ffmpegArgs = [
         '-i', 'merge_input_video.mp4',
-        '-i', 'merge_input_audio.mp3'
-      ];
-
-      if (validSegs.length > 1) {
-        const splitLabels = validSegs.map((_, i) => `[s${i}]`).join('');
-        filterScript += `[0:v]split=${validSegs.length}${splitLabels};\n`;
-
-        const segLabels = validSegs.map((seg, i) => {
-          const speed = typeof seg.videoSpeed === 'number' && seg.videoSpeed > 0 ? seg.videoSpeed : 1.0;
-          filterScript += `[s${i}]trim=${seg.originalStart.toFixed(4)}:${seg.originalEnd.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[v${i}];\n`;
-          return `[v${i}]`;
-        });
-
-        filterScript += `${segLabels.join('')}concat=n=${validSegs.length}:v=1:a=0[outv]\n`;
-
-      } else if (validSegs.length === 1) {
-        const seg = validSegs[0];
-        const speed = typeof seg.videoSpeed === 'number' && seg.videoSpeed > 0 ? seg.videoSpeed : 1.0;
-        if (seg.originalEnd === null) {
-          filterScript += `[0:v]trim=start=${seg.originalStart.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[outv]\n`;
-        } else {
-          filterScript += `[0:v]trim=${seg.originalStart.toFixed(4)}:${seg.originalEnd.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[outv]\n`;
-        }
-
-      } else {
-        // No video segments — pass video through as-is
-        filterScript += `[0:v]null[outv]\n`;
-      }
-
-      await ffmpeg.writeFile('filter.txt', new TextEncoder().encode(filterScript));
-
-      ffmpegArgs.push(
-        '-filter_complex_script', 'filter.txt',
-        '-map', '[outv]',
-        '-map', '1:a',
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
+        '-i', 'merge_input_audio.mp3',
+        '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '192k',
-        '-shortest',
-        'output_merged.mp4'
-      );
+        '-map', '0:v:0',
+        '-map', '1:a:0',
+        '-y', 'output_merged.mp4'
+      ];
 
       try {
         await ffmpeg.exec(ffmpegArgs);
