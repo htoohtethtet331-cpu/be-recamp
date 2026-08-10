@@ -330,11 +330,9 @@ function App() {
   const [ffmpegLoadingText, setFfmpegLoadingText] = useState('');
   const [ffmpegProgress, setFfmpegProgress] = useState(0);
   const ffmpegRef = useRef(new FFmpeg());
-  const renderFfmpegRef = useRef(new FFmpeg()); // Dedicated instance for rendering
 
   const loadFfmpeg = async () => {
     const ffmpeg = ffmpegRef.current;
-    const renderFfmpeg = renderFfmpegRef.current;
 
     ffmpeg.on('log', ({ message }) => {
       console.log('Extract:', message);
@@ -346,19 +344,10 @@ function App() {
       }
     });
 
-    renderFfmpeg.on('log', ({ message }) => {
-      console.log('Render:', message);
-    });
-
-    // Note: renderFfmpeg progress will be handled in the specific function
-
     setFfmpegLoadingText('ပထမဆုံးအကြိမ် စတင်သုံးစွဲသူဖြစ်တဲ့အတွက် အင်ဂျင်ကို တပ်ဆင်နေပါတယ်... (Downloading Engine - ~30MB)');
 
     try {
-      await Promise.all([
-        ffmpeg.load({ coreURL, wasmURL }),
-        renderFfmpeg.load({ coreURL, wasmURL })
-      ]);
+      await ffmpeg.load({ coreURL, wasmURL });
       setFfmpegLoadingText('အင်ဂျင် တပ်ဆင်ပြီးပါပြီ! အသုံးပြုနိုင်ပါပြီ။ (Engine Ready!)');
       setTimeout(() => {
         setFfmpegLoaded(true);
@@ -377,6 +366,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [loadingSteps, setLoadingSteps] = useState([]);
   const [downloadUrl, setDownloadUrl] = useState('');
+  const [audioFilename, setAudioFilename] = useState('');
   const [error, setError] = useState('');
   const [finalVideoUrl, setFinalVideoUrl] = useState('');
 
@@ -406,14 +396,6 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [videoId, setVideoId] = useState('');
-
-  // Background Render State
-  const [backgroundTask, setBackgroundTask] = useState({
-    status: 'idle', // 'idle' | 'rendering' | 'done' | 'error'
-    progress: 0,
-    videoUrl: '',
-    error: ''
-  });
 
   const [videoSegments, setVideoSegments] = useState([]);
 
@@ -945,81 +927,31 @@ function App() {
   };
 
   const handleDownloadVideo = async () => {
-    if (!file || !downloadUrl) return;
+    if (!file || !audioFilename) {
+      setError('ဗီဒီယို သို့မဟုတ် အသံဖိုင် မတွေ့ပါ။ ကျေးဇူးပြု၍ ပြန်လည်စမ်းသပ်ပါ။');
+      return;
+    }
 
-    setBackgroundTask({
-      status: 'rendering',
-      progress: 0,
-      videoUrl: '',
-      error: ''
-    });
+    setLoading(true);
+    setLoadingSteps(['Server ဆီသို့ ချိတ်ဆက်နေပါသည်...', 'ဗီဒီယိုကို အချောသပ်နေပါသည် (၁ စက္ကန့်ခန့်သာ ကြာပါမည်)...', 'Video Download လုပ်နေပါသည်...']);
+    setError('');
 
     try {
-      const renderFfmpeg = renderFfmpegRef.current;
-      if (!renderFfmpeg.loaded) {
-        throw new Error("Render FFmpeg is not loaded yet.");
-      }
+      const token = localStorage.getItem('token');
+      const renderForm = new FormData();
+      renderForm.append('video', file);
+      renderForm.append('audioFilename', audioFilename);
+      renderForm.append('videoDuration', String(videoDuration));
 
-      const audioDurationMs = utterances.length > 0 ? (utterances[utterances.length - 1].newEndMs || utterances[utterances.length - 1].end) : 0;
-
-      const progressHandler = ({ progress, time }) => {
-        if (time !== undefined && audioDurationMs > 0) {
-          const timeInMs = time / 1000;
-          let calculatedProgress = (timeInMs / audioDurationMs) * 100;
-          if (calculatedProgress > 99) calculatedProgress = 99; // hold at 99% until finished
-          setBackgroundTask(prev => ({ ...prev, progress: calculatedProgress }));
-        } else if (progress >= 0 && progress <= 1) {
-          setBackgroundTask(prev => ({ ...prev, progress: progress * 100 }));
+      const renderRes = await axios.post(`${apiUrl}/step4-render`, renderForm, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
         }
-      };
-      renderFfmpeg.on('progress', progressHandler);
-
-      // Fetch the source video and TTS audio into virtual FS
-      await renderFfmpeg.writeFile('input.mp4', await fetchFile(file));
-      await renderFfmpeg.writeFile('tts.mp3', await fetchFile(downloadUrl));
-
-      const ffmpegArgs = [
-        '-i', 'input.mp4',
-        '-i', 'tts.mp3',
-        '-c:v', 'copy',
-        '-c:a', 'aac',
-        '-map', '0:v:0',
-        '-map', '1:a:0',
-        '-y', 'output.mp4'
-      ];
-
-      try {
-        await renderFfmpeg.exec(ffmpegArgs);
-      } catch (err) {
-        console.warn("Manual render exec threw (often benign Aborted at teardown):", err);
-      }
-
-      renderFfmpeg.off('progress', progressHandler);
-
-      let data;
-      try {
-        data = await renderFfmpeg.readFile('output.mp4');
-      } catch (err) {
-        throw new Error('Failed to retrieve rendered video. Output file not found.');
-      }
-      
-      const finalBlob = new Blob([data.buffer], { type: 'video/mp4' });
-      const finalUrl = URL.createObjectURL(finalBlob);
-
-      // CLEAR MEMORY: Delete files from FFmpeg virtual file system to prevent RAM leak and slowdowns
-      await renderFfmpeg.deleteFile('input.mp4').catch(() => { });
-      await renderFfmpeg.deleteFile('tts.mp3').catch(() => { });
-      await renderFfmpeg.deleteFile('output.mp4').catch(() => { });
-      if (needsStretching) {
-        await renderFfmpeg.deleteFile('filter.txt').catch(() => { });
-      }
-
-      setBackgroundTask({
-        status: 'done',
-        progress: 100,
-        videoUrl: finalUrl,
-        error: ''
       });
+
+      const finalUrl = renderRes.data.url;
+      setFinalVideoUrl(finalUrl);
 
       // Auto-trigger download
       const a = document.createElement('a');
@@ -1030,12 +962,15 @@ function App() {
       document.body.removeChild(a);
 
     } catch (err) {
-      console.error('Render error:', err);
-      setBackgroundTask(prev => ({
-        ...prev,
-        status: 'error',
-        error: err.message || 'Failed to render final video.'
-      }));
+      console.error('Server render error:', err);
+      let errorMsg = 'Video ဖန်တီးရာတွင် အခက်အခဲရှိပါသည်။';
+      if (err.response && err.response.data && err.response.data.error) {
+        errorMsg = err.response.data.error;
+      }
+      setError(errorMsg);
+    } finally {
+      setLoading(false);
+      setLoadingSteps([]);
     }
   };
 
@@ -1228,6 +1163,7 @@ ${textArray}`;
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
       setDownloadUrl(response.data.url);
+      if (response.data.finalAudioFilename) setAudioFilename(response.data.finalAudioFilename);
       if (response.data.videoSegments) setVideoSegments(response.data.videoSegments);
       if (response.data.updatedUtterances) setUtterances(response.data.updatedUtterances);
 
@@ -1242,77 +1178,6 @@ ${textArray}`;
     }
   };
 
-  const handleMerge = async () => {
-    setLoading(true);
-    setFfmpegProgress(0);
-    setError('');
-    setLoadingSteps([
-      "ဗီဒီယိုနှင့် အသံဖိုင်ကို ပြင်ဆင်နေပါသည်...",
-      "AI က သင့်ဖုန်းအတွင်း၌ ဗီဒီယိုနှင့် အသံကို ပေါင်းစပ်နေပါသည်... (Local Processing)",
-      "အသံ အနှေးအမြန်နှင့် အချိန်ကိုက်ညီအောင် ညှိနေပါသည်...",
-      "Video ဖိုင်အသစ် ဖန်တီးနေပါသည်...",
-      "ခဏစောင့်ပေးပါ၊ ပြီးတော့မည်..."
-    ]);
-
-    try {
-      const ffmpeg = ffmpegRef.current;
-
-      // 1. Write inputs to FFmpeg FS
-      await ffmpeg.writeFile('merge_input_video.mp4', await fetchFile(file));
-      await ffmpeg.writeFile('merge_input_audio.mp3', await fetchFile(downloadUrl));
-
-      // 2. Simple mux: keep original video speed, drop original audio, add new mixed audio
-      const ffmpegArgs = [
-        '-i', 'merge_input_video.mp4',
-        '-i', 'merge_input_audio.mp3',
-        '-c:v', 'copy',
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-map', '0:v:0',
-        '-map', '1:a:0',
-        '-y', 'output_merged.mp4'
-      ];
-
-      try {
-        await ffmpeg.exec(ffmpegArgs);
-      } catch (err) {
-        console.warn("Manual Mode merge exec threw (benign Aborted):", err);
-      }
-
-      // 3. Read output and trigger download
-      let outputData;
-      try {
-        outputData = await ffmpeg.readFile('output_merged.mp4');
-      } catch (err) {
-        throw new Error('Video merge failed. Output file not generated.');
-      }
-      const outputBlob = new Blob([outputData.buffer], { type: 'video/mp4' });
-      const url = URL.createObjectURL(outputBlob);
-
-      const a = document.createElement('a');
-      a.href = url;
-      a.target = '_blank';
-      a.download = `Recap_${Date.now()}.mp4`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      // Clean up
-      await ffmpeg.deleteFile('merge_input_video.mp4').catch(() => { });
-      await ffmpeg.deleteFile('merge_input_audio.mp3').catch(() => { });
-      await ffmpeg.deleteFile('output_merged.mp4').catch(() => { });
-      await ffmpeg.deleteFile('filter.txt').catch(() => { });
-
-      setLoadingSteps([]);
-    } catch (err) {
-      console.error(err);
-      setError(err.message || 'Video merge failed.');
-      setLoadingSteps([]);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleTextEdit = (index, field, value) => {
     const newUtterances = [...utterances];
@@ -1594,72 +1459,7 @@ ${textArray}`;
       {/* Main Container */}
       <div className="flex-1 flex flex-col items-center p-4 relative z-10 overflow-hidden">
 
-        {/* Background Task Floating Indicator */}
-        {backgroundTask.status !== 'idle' && (
-          <div className="fixed top-4 left-4 z-[100] flex items-center bg-[#1e293b]/90 backdrop-blur-md shadow-2xl border border-white/20 rounded-full pl-2 pr-5 py-2.5 gap-4 transition-all duration-500 hover:scale-105">
-            {backgroundTask.status === 'rendering' && (
-              <>
-                <div className="relative w-10 h-10 flex items-center justify-center">
-                  <svg className="w-10 h-10 transform -rotate-90" viewBox="0 0 36 36">
-                    <path
-                      className="text-white/90"
-                      strokeWidth="3.5"
-                      stroke="currentColor"
-                      fill="none"
-                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    />
-                    <path
-                      className="text-blue-300 transition-all duration-[2000ms] ease-out"
-                      strokeDasharray={`${backgroundTask.progress}, 100`}
-                      strokeWidth="3.5"
-                      strokeLinecap="round"
-                      stroke="currentColor"
-                      fill="none"
-                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    />
-                  </svg>
-                  <span className="absolute text-[11px] font-extrabold text-blue-200 font-mono tracking-tighter">{Math.round(backgroundTask.progress)}%</span>
-                </div>
-                <div className="flex flex-col justify-center">
-                  <span className="text-sm font-bold text-white leading-tight">Rendering...</span>
-                  <span className="text-[11px] text-blue-300 font-medium">Creating video in background</span>
-                </div>
-              </>
-            )}
 
-            {backgroundTask.status === 'done' && (
-              <>
-                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center shadow-inner">
-                  <CheckCircle2 className="w-6 h-6 text-green-400" />
-                </div>
-                <div className="flex flex-col justify-center">
-                  <span className="text-sm font-bold text-green-300 leading-tight">Finished!</span>
-                  <a href={backgroundTask.videoUrl} download={`RecapStudio_${Date.now()}.mp4`} className="text-[11px] text-blue-300 font-bold hover:underline">
-                    Click to Download
-                  </a>
-                </div>
-                <button onClick={() => setBackgroundTask({ status: 'idle', progress: 0, videoUrl: '', error: '' })} className="ml-3 p-1 text-white/50 hover:text-white transition-colors bg-white/10/20 rounded-full">
-                  &times;
-                </button>
-              </>
-            )}
-
-            {backgroundTask.status === 'error' && (
-              <>
-                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center shadow-inner">
-                  <AlertTriangle className="w-6 h-6 text-red-600" />
-                </div>
-                <div className="flex flex-col justify-center">
-                  <span className="text-sm font-bold text-red-700 leading-tight">Failed</span>
-                  <span className="text-[11px] text-white/70 truncate max-w-[150px]">{backgroundTask.error}</span>
-                </div>
-                <button onClick={() => setBackgroundTask({ status: 'idle', progress: 0, videoUrl: '', error: '' })} className="ml-3 p-1 text-white/50 hover:text-white transition-colors bg-white/10/20 rounded-full">
-                  &times;
-                </button>
-              </>
-            )}
-          </div>
-        )}
 
         {/* Manual Mode Editor Card */}
         <div className="bg-white/5 backdrop-blur-2xl rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-white/10 flex flex-col max-h-full sm:my-auto">
@@ -1967,28 +1767,13 @@ ${textArray}`;
                     </button>
 
                     <button
-                      onClick={() => {
-                        if (backgroundTask.status === 'done' && backgroundTask.videoUrl) {
-                          const a = document.createElement('a');
-                          a.href = backgroundTask.videoUrl;
-                          a.download = `RecapStudio_${Date.now()}.mp4`;
-                          document.body.appendChild(a);
-                          a.click();
-                          document.body.removeChild(a);
-                        } else {
-                          handleDownloadVideo();
-                        }
-                      }}
-                      disabled={backgroundTask.status === 'rendering' || loading}
+                      onClick={handleDownloadVideo}
+                      disabled={loading}
                       className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold rounded-2xl shadow-lg hover:shadow-purple-500/30 transition-all flex items-center justify-center gap-3 disabled:opacity-50 text-lg mt-2"
                     >
-                      {backgroundTask.status === 'rendering' ? (
+                      {loading ? (
                         <>
-                          <Loader2 className="w-6 h-6 animate-spin" /> Rendering Video...
-                        </>
-                      ) : backgroundTask.status === 'done' ? (
-                        <>
-                          <CheckCircle2 className="w-6 h-6" /> Download Again
+                          <Loader2 className="w-6 h-6 animate-spin" /> Video ဖန်တီးနေပါသည်...
                         </>
                       ) : (
                         <>

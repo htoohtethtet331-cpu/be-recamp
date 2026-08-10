@@ -470,14 +470,13 @@ app.post('/api/tts-preview', requireAuth, async (req, res) => {
 });
 
 
-// Step 4 (Server Render): Premium/Admin only — render video on server using native FFmpeg
+// Step 4 (Server Render): Native FFmpeg Muxing
 app.post('/api/step4-render', requireAuth, videoUpload.single('video'), async (req, res) => {
   let videoPath = null;
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (user.role === 'restrict') return res.status(403).json({ error: 'Your account is restricted.' });
-    if (user.role === 'free') return res.status(403).json({ error: 'Server rendering is only available for Premium and Admin users.' });
 
     if (!req.file) return res.status(400).json({ error: 'No video file provided' });
 
