@@ -571,173 +571,35 @@ function App() {
 
       setAutoProgress(75);
 
-      // ── Premium/Admin: Server-Side Render (faster) ──
-      if (user?.role === 'premium' || user?.role === 'admin') {
-        setAutoStep(5); setAutoProgress(80);
+      // ── Server-Side Render (faster) ──
+      setAutoStep(5); setAutoProgress(80);
 
-        const renderForm = new FormData();
-        renderForm.append('video', file);
-        renderForm.append('audioFilename', audioFilename);
-        renderForm.append('videoSegmentsJson', JSON.stringify(ttsRes.data.videoSegments || []));
-        renderForm.append('videoDuration', String(videoDuration));
+      const renderForm = new FormData();
+      renderForm.append('video', file);
+      renderForm.append('audioFilename', audioFilename);
+      renderForm.append('videoSegmentsJson', JSON.stringify(ttsRes.data.videoSegments || []));
+      renderForm.append('videoDuration', String(videoDuration));
 
-        const renderRes = await axios.post(`${apiUrl}/step4-render`, renderForm, {
-          headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${token}` },
-          onUploadProgress: (progressEvent) => {
-            const uploadPct = (progressEvent.loaded / (progressEvent.total || 1)) * 100;
-            // Upload is 80–90%, server processing is 90–100%
-            setAutoProgress(80 + uploadPct * 0.10);
-          }
-        });
-
-        setAutoProgress(100);
-        setAutoStep(6);
-
-        setUtterances(ttsRes.data.updatedUtterances || ttsRes.data.utterances || []);
-        setPreviewAudioUrl(audioUrl);
-        setVideoSegments(ttsRes.data.videoSegments || []);
-        setFinalVideoUrl(renderRes.data.url);
-        setLoading(false);
-        return; // done — skip client-side render below
-      }
-
-      // ── Free users: Client-Side FFmpeg.wasm Render ──
-      const fetchedAudioData = await fetchFile(audioUrl);
-
-      const renderFfmpeg = renderFfmpegRef.current;
-      await renderFfmpeg.writeFile('input_video.mp4', await fetchFile(file));
-      await renderFfmpeg.writeFile('merge_input_audio.mp3', fetchedAudioData);
-
-      // Free up memory from the primary ffmpeg instance to avoid OOM
-      await ffmpeg.deleteFile('input_video.mp4').catch(() => { });
-      await ffmpeg.deleteFile('extracted_audio.mp3').catch(() => { });
-
-      const utterancesArray = ttsRes.data.updatedUtterances || ttsRes.data.utterances || [];
-      const videoSegmentsArr = ttsRes.data.videoSegments || [];
-      const audioDurationMs = utterancesArray.length > 0 ? (utterancesArray[utterancesArray.length - 1].newEndMs || utterancesArray[utterancesArray.length - 1].end || 0) : 0;
-
-
-      // ── CLAUDE.md Step 7: N retimed segments (trim+setpts per block) concatenated ──
-      // Filter out zero-length or invalid segments first so split count matches concat count
-      const validSegs = videoSegmentsArr.filter(
-        (seg) => typeof seg.originalStart === 'number' &&
-          typeof seg.originalEnd === 'number' &&
-          seg.originalEnd > seg.originalStart + 0.001
-      );
-
-      // Add a final segment for the remainder of the video if there's silence at the end
-      if (validSegs.length > 0) {
-        const videoDuration = await getVideoDuration(file);
-        const lastSeg = validSegs[validSegs.length - 1];
-        if (videoDuration - lastSeg.originalEnd > 0.1) {
-          validSegs.push({
-            originalStart: lastSeg.originalEnd,
-            originalEnd: null,
-            videoSpeed: 1.0
-          });
+      const renderRes = await axios.post(`${apiUrl}/step4-render`, renderForm, {
+        headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${token}` },
+        onUploadProgress: (progressEvent) => {
+          const uploadPct = (progressEvent.loaded / (progressEvent.total || 1)) * 100;
+          // Upload is 80–90%, server processing is 90–100%
+          setAutoProgress(80 + uploadPct * 0.10);
         }
-      }
-
-      let filterScript = '';
-      const ffmpegArgs = [
-        '-i', 'input_video.mp4',
-        '-i', 'merge_input_audio.mp3'
-      ];
-
-      if (validSegs.length > 1) {
-        // Split the input video into exactly validSegs.length copies
-        const splitLabels = validSegs.map((_, i) => `[s${i}]`).join('');
-        filterScript += `[0:v]split=${validSegs.length}${splitLabels};\n`;
-
-        // Trim + setpts each segment per CLAUDE.md spec
-        const segLabels = validSegs.map((seg, i) => {
-          const speed = typeof seg.videoSpeed === 'number' && seg.videoSpeed > 0 ? seg.videoSpeed : 1.0;
-          if (seg.originalEnd === null) {
-            filterScript += `[s${i}]trim=start=${seg.originalStart.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[v${i}];\n`;
-          } else {
-            filterScript += `[s${i}]trim=${seg.originalStart.toFixed(4)}:${seg.originalEnd.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[v${i}];\n`;
-          }
-          return `[v${i}]`;
-        });
-
-        // Concatenate all retimed segments back to back
-        filterScript += `${segLabels.join('')}concat=n=${validSegs.length}:v=1:a=0[outv]\n`;
-
-      } else if (validSegs.length === 1) {
-        // Single segment — no split needed
-        const seg = validSegs[0];
-        const speed = typeof seg.videoSpeed === 'number' && seg.videoSpeed > 0 ? seg.videoSpeed : 1.0;
-        if (seg.originalEnd === null) {
-          filterScript += `[0:v]trim=start=${seg.originalStart.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[outv]\n`;
-        } else {
-          filterScript += `[0:v]trim=${seg.originalStart.toFixed(4)}:${seg.originalEnd.toFixed(4)},setpts=${(1 / speed).toFixed(6)}*(PTS-STARTPTS)[outv]\n`;
-        }
-
-      } else {
-        // No segments at all — pass video through as-is
-        filterScript += `[0:v]null[outv]\n`;
-      }
-
-      await renderFfmpeg.writeFile('filter.txt', new TextEncoder().encode(filterScript));
-
-      ffmpegArgs.push(
-        '-filter_complex_script', 'filter.txt',
-        '-map', '[outv]',
-        '-map', '1:a',
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-c:a', 'aac',
-        '-shortest',
-        'final_output.mp4'
-      );
-
-      // Setup Preview States
-      setUtterances(utterancesArray);
-      setPreviewAudioUrl(audioUrl);
-      setVideoSegments(ttsRes.data.videoSegments || []);
-
-      setAutoStep(5); setAutoProgress(80); // Rendering step
-
-      // Start rendering
-      const progressHandler = ({ progress, time }) => {
-        let p = 0;
-        if (time !== undefined && audioDurationMs > 0) {
-          const timeInMs = time / 1000;
-          p = (timeInMs / audioDurationMs) * 100;
-          if (p > 99) p = 99;
-        } else if (progress >= 0 && progress <= 1) {
-          p = progress * 100;
-        }
-        // Scale ffmpeg progress (0-100) to autoProgress (80-100)
-        setAutoProgress(80 + (p * 0.2));
-      };
-
-      renderFfmpeg.on('progress', progressHandler);
-      try {
-        await renderFfmpeg.exec(ffmpegArgs);
-      } catch (err) {
-        console.warn("Auto render exec threw (often benign Aborted at teardown):", err);
-      }
-      renderFfmpeg.off('progress', progressHandler);
-
-      let finalData;
-      try {
-        finalData = await renderFfmpeg.readFile('final_output.mp4');
-      } catch (err) {
-        throw new Error('Video rendering failed. The video might be too large or incompatible.');
-      }
+      });
 
       setAutoProgress(100);
-      setAutoStep(6); // Finished
+      setAutoStep(6);
 
-      const finalUrl = URL.createObjectURL(new Blob([finalData.buffer], { type: 'video/mp4' }));
-      setFinalVideoUrl(finalUrl);
+      setUtterances(ttsRes.data.updatedUtterances || ttsRes.data.utterances || []);
+      setPreviewAudioUrl(audioUrl);
+      setVideoSegments(ttsRes.data.videoSegments || []);
+      setFinalVideoUrl(renderRes.data.url);
+      setLoading(false);
+      return;
 
-      // CLEAR MEMORY to prevent slowdowns on next render
-      await renderFfmpeg.deleteFile('input_video.mp4').catch(() => { });
-      await renderFfmpeg.deleteFile('merge_input_audio.mp3').catch(() => { });
-      await renderFfmpeg.deleteFile('final_output.mp4').catch(() => { });
-      await renderFfmpeg.deleteFile('filter.txt').catch(() => { });
+
 
       setLoading(false);
 
