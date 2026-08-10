@@ -551,9 +551,9 @@ const server = app.listen(port, () => {
 });
 
 // Disable timeouts to prevent 408 errors during large uploads
-// server.requestTimeout = 0;
-// server.headersTimeout = 0;
-// server.keepAliveTimeout = 0;
-// server.setTimeout(0);
+server.requestTimeout = 0;
+server.headersTimeout = 0;
+server.keepAliveTimeout = 65000;
+server.setTimeout(0);
 
 

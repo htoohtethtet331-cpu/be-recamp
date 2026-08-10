@@ -491,7 +491,6 @@ function App() {
     setDownloadUrl('');
     setError('');
     setIsPlaying(false);
-    setBackgroundTask({ status: 'idle', progress: 0, videoUrl: '', error: '' });
   };
 
 
@@ -515,10 +514,6 @@ function App() {
 
   const handleAutoProcess = async () => {
     if (!file) { setError('Please select a video file first.'); return; }
-    if (user?.role === 'free') {
-      setError('Auto mode is only available for Premium users.');
-      return;
-    }
     if (user?.role !== 'admin' && (user?.videoLimit === undefined || user?.videoLimit <= 0)) {
       setError('Video limit reached. You have 0 credits remaining.');
       return;
