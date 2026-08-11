@@ -384,6 +384,12 @@ function App() {
   const [selectedVoice, setSelectedVoice] = useState(VOICE_PRESETS[0]);
   const [pitchOffset, setPitchOffset] = useState(0);
   const [renderMode, setRenderMode] = useState('premium'); // 'fast' | 'premium'
+  // AI Recap Mode States (independent of dubbing mode)
+  const [processingMode, setProcessingMode] = useState('dubbing'); // 'dubbing' | 'recap'
+  const [utterancesForVideo, setUtterancesForVideo] = useState([]);
+  const [recapMerging, setRecapMerging] = useState(false);
+  const [recapProgress, setRecapProgress] = useState(0);
+  const [recapVideoUrl, setRecapVideoUrl] = useState('');
   // Translation Mode States
   const [translationMode, setTranslationMode] = useState(null); // 'manual' | 'api'
   const [geminiApiKey, setGeminiApiKey] = useState(localStorage.getItem('geminiApiKey') || '');
@@ -496,6 +502,9 @@ function App() {
     setDownloadUrl('');
     setError('');
     setIsPlaying(false);
+    setUtterancesForVideo([]);
+    setRecapVideoUrl('');
+    setRecapProgress(0);
   };
 
 
@@ -573,7 +582,10 @@ function App() {
         rate: selectedVoice.rate,
         pitch: `${finalPitch >= 0 ? '+' : ''}${finalPitch}Hz`
       };
-      const ttsRes = await axios.post(`${apiUrl}/step3-tts`, { translatedUtterances, voice: voicePayload, videoDuration }, { headers: { Authorization: `Bearer ${token}` } });
+      const ttsRes = await axios.post(`${apiUrl}/step3-tts`, {
+        translatedUtterances, voice: voicePayload, videoDuration,
+        recapMode: processingMode === 'recap'  // AI Recap mode flag
+      }, { headers: { Authorization: `Bearer ${token}` } });
       const audioUrl = ttsRes.data.url;
 
       // ── Done: MP3 ready for download ──
@@ -583,6 +595,10 @@ function App() {
       setPreviewAudioUrl(audioUrl);
       setDownloadUrl(audioUrl);
       setVideoSegments([]);
+      // AI Recap: store timing data for client-side video processing
+      if (ttsRes.data.recapMode && ttsRes.data.utterancesForVideo) {
+        setUtterancesForVideo(ttsRes.data.utterancesForVideo);
+      }
       setLoading(false);
 
     } catch (err) {
@@ -654,6 +670,138 @@ function App() {
       setError('Video merge failed: ' + (err.message || err));
     } finally {
       setMerging(false);
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // handleRecapVideoRender: AI Recap Mode — Client-side WASM
+  //   1. Build ffmpeg filter_complex to stretch/compress each utterance
+  //      segment to match its TTS audio duration (setpts filter)
+  //   2. Gap segments stay at original speed
+  //   3. Mux time-adjusted video + dubbed audio → final MP4
+  //   ⚠️ Does NOT touch the existing dubbing mode code
+  // ─────────────────────────────────────────────────────────────────────────
+  const handleRecapVideoRender = async () => {
+    if (!file) { setError('Original video file not found. Please start a new project.'); return; }
+    if (!downloadUrl) { setError('Dubbed audio not ready. Please complete Step 3 first.'); return; }
+    if (!utterancesForVideo || utterancesForVideo.length === 0) {
+      setError('Recap timing data missing. Please re-run Step 3 with AI Recap mode selected.');
+      return;
+    }
+
+    setRecapMerging(true);
+    setRecapProgress(2);
+    setRecapVideoUrl('');
+    setError('');
+
+    try {
+      const ffmpeg = ffmpegRef.current;
+
+      // Load original video into WASM
+      setRecapProgress(5);
+      await ffmpeg.writeFile('recap_input', await fetchFile(file));
+      setRecapProgress(12);
+
+      // Build filter_complex for video time-stretching
+      const sorted = [...utterancesForVideo].sort((a, b) => a.origStart - b.origStart);
+      let filters = '';
+      let concatParts = [];
+      let segIdx = 0;
+      let lastOrigEndSec = 0;
+
+      for (const u of sorted) {
+        const origStartSec = u.origStart / 1000;
+        const origEndSec   = u.origEnd   / 1000;
+        const origDur      = origEndSec - origStartSec;
+
+        // Gap before this utterance → original speed
+        if (origStartSec - lastOrigEndSec > 0.05) {
+          const gs = lastOrigEndSec.toFixed(4);
+          const ge = origStartSec.toFixed(4);
+          filters += `[0:v]trim=start=${gs}:end=${ge},setpts=PTS-STARTPTS[seg${segIdx}];`;
+          concatParts.push(`[seg${segIdx}]`);
+          segIdx++;
+        }
+
+        // Utterance segment → stretch/compress to match TTS duration
+        const setptsVal = origDur > 0.01 ? (u.ttsDuration / origDur) : 1.0;
+        const ss = origStartSec.toFixed(4);
+        const se = origEndSec.toFixed(4);
+        filters += `[0:v]trim=start=${ss}:end=${se},setpts=${setptsVal.toFixed(6)}*(PTS-STARTPTS)[seg${segIdx}];`;
+        concatParts.push(`[seg${segIdx}]`);
+        segIdx++;
+
+        lastOrigEndSec = origEndSec;
+      }
+
+      // Trailing gap (original video tail after last utterance)
+      if (videoDuration - lastOrigEndSec > 0.05) {
+        const ts = lastOrigEndSec.toFixed(4);
+        const te = videoDuration.toFixed(4);
+        filters += `[0:v]trim=start=${ts}:end=${te},setpts=PTS-STARTPTS[seg${segIdx}];`;
+        concatParts.push(`[seg${segIdx}]`);
+        segIdx++;
+      }
+
+      filters += `${concatParts.join('')}concat=n=${segIdx}:v=1:a=0[vout]`;
+
+      // Run video time-stretching
+      setRecapProgress(15);
+      ffmpeg.on('progress', ({ progress }) => {
+        setRecapProgress(15 + Math.round(progress * 68)); // 15% → 83%
+      });
+
+      await ffmpeg.exec([
+        '-i', 'recap_input',
+        '-filter_complex', filters,
+        '-map', '[vout]',
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-crf', '26',
+        '-an',
+        '-y', 'recap_video_only.mp4'
+      ]);
+
+      ffmpeg.off('progress');
+      setRecapProgress(84);
+
+      // Fetch dubbed audio from server
+      const audioResp = await fetch(downloadUrl);
+      const audioBlob = await audioResp.blob();
+      const audioData = new Uint8Array(await audioBlob.arrayBuffer());
+      await ffmpeg.writeFile('recap_dubbed_audio.mp3', audioData);
+      setRecapProgress(88);
+
+      // Mux video + audio → final MP4
+      await ffmpeg.exec([
+        '-i', 'recap_video_only.mp4',
+        '-i', 'recap_dubbed_audio.mp3',
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-map', '0:v',
+        '-map', '1:a',
+        '-shortest',
+        '-y', 'recap_final.mp4'
+      ]);
+      setRecapProgress(95);
+
+      // Read result → blob URL
+      const finalData = await ffmpeg.readFile('recap_final.mp4');
+      const url = URL.createObjectURL(new Blob([finalData.buffer], { type: 'video/mp4' }));
+      setRecapVideoUrl(url);
+      setRecapProgress(100);
+
+      // Cleanup WASM FS
+      await ffmpeg.deleteFile('recap_input').catch(() => {});
+      await ffmpeg.deleteFile('recap_video_only.mp4').catch(() => {});
+      await ffmpeg.deleteFile('recap_dubbed_audio.mp3').catch(() => {});
+      await ffmpeg.deleteFile('recap_final.mp4').catch(() => {});
+
+    } catch (err) {
+      console.error('[Recap WASM]', err);
+      setError('AI Recap video processing failed: ' + (err.message || err));
+    } finally {
+      setRecapMerging(false);
     }
   };
 
@@ -1065,7 +1213,8 @@ ${textArray}`;
       const response = await axios.post(`${apiUrl}/step3-tts`, {
         translatedUtterances: updatedUtterances,
         voice: voicePayload,
-        videoDuration
+        videoDuration,
+        recapMode: processingMode === 'recap'  // AI Recap mode flag
       }, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
@@ -1073,6 +1222,10 @@ ${textArray}`;
       if (response.data.finalAudioFilename) setAudioFilename(response.data.finalAudioFilename);
       if (response.data.videoSegments) setVideoSegments(response.data.videoSegments);
       if (response.data.updatedUtterances) setUtterances(response.data.updatedUtterances);
+      // AI Recap: store timing data for client-side video processing
+      if (response.data.recapMode && response.data.utterancesForVideo) {
+        setUtterancesForVideo(response.data.utterancesForVideo);
+      }
 
       setStep(4);
       setLoadingSteps([]);
@@ -1245,8 +1398,8 @@ ${textArray}`;
                   </div>
                 )}
 
-                {/* Merge with Video */}
-                {!mergedVideoUrl && file && downloadUrl && (
+                {/* Merge with Video (Dubbing Mode) */}
+                {processingMode === 'dubbing' && !mergedVideoUrl && file && downloadUrl && (
                   <div className="bg-white/5 rounded-2xl p-4 border border-white/10 space-y-3">
                     <p className="text-xs text-white/60 font-medium uppercase tracking-wider">🎬 မူရင်း Video နဲ့ ပေါင်းစပ်မည်</p>
                     {merging && (
@@ -1263,6 +1416,47 @@ ${textArray}`;
                     >
                       {merging ? <><Loader2 className="w-5 h-5 animate-spin" /> Merging... {Math.round(mergeProgress)}%</> : <><Film className="w-5 h-5" /> Video + Audio ပေါင်းစပ်မည်</>}
                     </button>
+                  </div>
+                )}
+
+                {/* AI Recap Mode: Video Render button */}
+                {processingMode === 'recap' && !recapVideoUrl && file && downloadUrl && (
+                  <div className="bg-orange-900/20 rounded-2xl p-4 border border-orange-500/20 space-y-3">
+                    <p className="text-xs text-orange-400 font-medium uppercase tracking-wider">🎬 AI Recap Video ဖန်တီးမည်</p>
+                    <p className="text-xs text-white/40 leading-relaxed">Phone CPU ကိုသုံးပြီး video segment ကို stretch/compress လုပ်မည်။ ကြာနိုင်ပါသည်။</p>
+                    {recapMerging && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs text-orange-400">
+                          <span>Rendering...</span>
+                          <span>{recapProgress}%</span>
+                        </div>
+                        <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                          <div className="h-full bg-gradient-to-r from-orange-500 to-amber-500 transition-all duration-300 rounded-full" style={{ width: `${recapProgress}%` }} />
+                        </div>
+                      </div>
+                    )}
+                    <button
+                      onClick={handleRecapVideoRender}
+                      disabled={recapMerging || !file || utterancesForVideo.length === 0}
+                      className={`w-full py-3.5 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 ${
+                        recapMerging || !file || utterancesForVideo.length === 0
+                          ? 'bg-white/10 text-white/50 cursor-not-allowed'
+                          : 'bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white shadow-lg'
+                      }`}
+                    >
+                      {recapMerging ? <><Loader2 className="w-5 h-5 animate-spin" /> Rendering... {recapProgress}%</> : <><Film className="w-5 h-5" /> AI Recap Video ဖန်တီးမည်</>}
+                    </button>
+                  </div>
+                )}
+
+                {/* AI Recap Video Result (Auto Mode) */}
+                {processingMode === 'recap' && recapVideoUrl && (
+                  <div className="bg-white/5 rounded-2xl p-3 border border-orange-500/20 space-y-3">
+                    <p className="text-xs text-orange-400 font-bold uppercase">✅ AI Recap Video Ready!</p>
+                    <video controls src={recapVideoUrl} className="w-full rounded-xl" style={{ maxHeight: '240px', background: '#000' }} playsInline />
+                    <a href={recapVideoUrl} download="ai_recap_video.mp4" className="w-full py-3 bg-gradient-to-r from-orange-600 to-amber-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg">
+                      <Download className="w-5 h-5" /> Download AI Recap Video (.mp4)
+                    </a>
                   </div>
                 )}
 
@@ -1321,6 +1515,35 @@ ${textArray}`;
                     pitchOffset={pitchOffset}
                     setPitchOffset={setPitchOffset}
                   />
+                </div>
+
+                {/* Processing Mode Selector */}
+                <div className="mt-2">
+                  <p className="text-xs text-white/50 mb-2 font-medium uppercase tracking-wider">Processing Mode</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => { setProcessingMode('dubbing'); setRecapVideoUrl(''); }}
+                      className={`py-3 px-3 rounded-xl font-bold text-sm transition-all flex flex-col items-center gap-1 border ${
+                        processingMode === 'dubbing'
+                          ? 'bg-blue-600/30 border-blue-500/60 text-blue-300'
+                          : 'bg-white/5 border-white/10 text-white/50 hover:text-white'
+                      }`}
+                    >
+                      <span>🎙️</span>
+                      <span>အသံထပ် (Dubbing)</span>
+                    </button>
+                    <button
+                      onClick={() => { setProcessingMode('recap'); setMergedVideoUrl(''); }}
+                      className={`py-3 px-3 rounded-xl font-bold text-sm transition-all flex flex-col items-center gap-1 border ${
+                        processingMode === 'recap'
+                          ? 'bg-orange-600/30 border-orange-500/60 text-orange-300'
+                          : 'bg-white/5 border-white/10 text-white/50 hover:text-white'
+                      }`}
+                    >
+                      <span>🎬</span>
+                      <span>AI Recap</span>
+                    </button>
+                  </div>
                 </div>
 
                 <button
@@ -1501,6 +1724,42 @@ ${textArray}`;
                 )}
 
                 {/* Removed inline AssemblyAI API Key Input */}
+
+                {/* Mode Selector: Dubbing vs AI Recap */}
+                <div className="mt-5 mb-2">
+                  <p className="text-xs text-white/50 mb-2 font-medium uppercase tracking-wider">Processing Mode</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => { setProcessingMode('dubbing'); setRecapVideoUrl(''); }}
+                      className={`py-3 px-4 rounded-xl font-bold text-sm transition-all flex flex-col items-center gap-1 border ${
+                        processingMode === 'dubbing'
+                          ? 'bg-blue-600/30 border-blue-500/60 text-blue-300 shadow-lg shadow-blue-500/10'
+                          : 'bg-white/5 border-white/10 text-white/50 hover:text-white hover:border-white/20'
+                      }`}
+                    >
+                      <span className="text-base">🎙️</span>
+                      <span>အသံထပ် မုဒ်</span>
+                      <span className="text-xs font-normal opacity-70">(Dubbing)</span>
+                    </button>
+                    <button
+                      onClick={() => { setProcessingMode('recap'); setMergedVideoUrl(''); }}
+                      className={`py-3 px-4 rounded-xl font-bold text-sm transition-all flex flex-col items-center gap-1 border ${
+                        processingMode === 'recap'
+                          ? 'bg-orange-600/30 border-orange-500/60 text-orange-300 shadow-lg shadow-orange-500/10'
+                          : 'bg-white/5 border-white/10 text-white/50 hover:text-white hover:border-white/20'
+                      }`}
+                    >
+                      <span className="text-base">🎬</span>
+                      <span>ဇာတ်လမ်းပြန်ပြော</span>
+                      <span className="text-xs font-normal opacity-70">(AI Recap)</span>
+                    </button>
+                  </div>
+                  {processingMode === 'recap' && (
+                    <p className="text-xs text-orange-400/80 mt-2 leading-relaxed">
+                      ⚠️ AI Recap Mode: Video segment တစ်ခုချင်းကို TTS audio duration နဲ့ ကိုက်ညီအောင် stretch/compress လုပ်မည်။ Phone CPU ကသုံးမည်ဖြစ်ပြီး ကြာနိုင်ပါသည်။
+                    </p>
+                  )}
+                </div>
 
                 {step === 1 && (
                   <button
@@ -1713,8 +1972,8 @@ ${textArray}`;
                   </div>
                 )}
 
-                {/* ─── Merge with Original Video (Client-side WASM) ─── */}
-                {!mergedVideoUrl && (
+                {/* ─── Merge with Original Video (Dubbing Mode) ─── */}
+                {processingMode === 'dubbing' && !mergedVideoUrl && (
                   <div className="bg-white/5 rounded-2xl p-4 border border-white/10 space-y-3">
                     <p className="text-xs text-white/60 font-medium uppercase tracking-wider">🎬 မူရင်း Video နဲ့ ပေါင်းစပ်မည်</p>
                     <p className="text-xs text-white/40 leading-relaxed">
@@ -1743,6 +2002,75 @@ ${textArray}`;
                         <><Film className="w-6 h-6" /> Video + Audio ပေါင်းစပ်မည်</>
                       )}
                     </button>
+                  </div>
+                )}
+
+                {/* ─── AI Recap Mode: Video Time-Stretch ─── */}
+                {processingMode === 'recap' && !recapVideoUrl && (
+                  <div className="bg-orange-900/20 rounded-2xl p-4 border border-orange-500/20 space-y-3">
+                    <p className="text-xs text-orange-400 font-medium uppercase tracking-wider">🎬 AI Recap Video ဖန်တီးမည်</p>
+                    <p className="text-xs text-white/40 leading-relaxed">
+                      Video ရဲ့ segment တစ်ခုချင်းကို TTS audio duration နဲ့ ကိုက်ညီအောင် stretch/compress လုပ်မည်။
+                      Phone CPU ကိုသုံးပြီး render လုပ်သည် — ကြာနိုင်ပါသည်။
+                    </p>
+                    {recapMerging && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs text-orange-400">
+                          <span>Processing...</span>
+                          <span>{recapProgress}%</span>
+                        </div>
+                        <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-orange-500 to-amber-500 transition-all duration-300 rounded-full"
+                            style={{ width: `${recapProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <button
+                      onClick={handleRecapVideoRender}
+                      disabled={recapMerging || !file || utterancesForVideo.length === 0}
+                      className={`w-full py-4 rounded-2xl font-bold text-lg transition-all flex items-center justify-center gap-3 ${
+                        recapMerging || !file || utterancesForVideo.length === 0
+                          ? 'bg-white/10 text-white/50 cursor-not-allowed'
+                          : 'bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white shadow-lg shadow-orange-500/20'
+                      }`}
+                    >
+                      {recapMerging ? (
+                        <><Loader2 className="w-6 h-6 animate-spin" /> Rendering... {recapProgress}%</>
+                      ) : (
+                        <><Film className="w-6 h-6" /> AI Recap Video ဖန်တီးမည်</>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* AI Recap Video Result */}
+                {processingMode === 'recap' && recapVideoUrl && (
+                  <div className="bg-white/5 rounded-2xl p-4 border border-orange-500/20 space-y-3">
+                    <p className="text-xs text-orange-400 font-medium uppercase tracking-wider">✅ AI Recap Video Ready!</p>
+                    <video
+                      controls
+                      src={recapVideoUrl}
+                      className="w-full rounded-xl"
+                      style={{ maxHeight: '280px', background: '#000' }}
+                      playsInline
+                    />
+                    <div className="flex flex-col gap-2">
+                      <a
+                        href={recapVideoUrl}
+                        download="ai_recap_video.mp4"
+                        className="w-full py-4 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-3 text-lg"
+                      >
+                        <Download className="w-6 h-6" /> Download AI Recap Video (.mp4)
+                      </a>
+                      <button
+                        onClick={() => { setRecapVideoUrl(''); setRecapProgress(0); }}
+                        className="w-full py-2 bg-white/10 hover:bg-white/20 text-white/60 rounded-xl text-sm transition"
+                      >
+                        ပြန်လုပ်မည် (Re-render)
+                      </button>
+                    </div>
                   </div>
                 )}
 

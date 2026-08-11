@@ -9,7 +9,7 @@ const path = require('path');
 const { getTranscriptAndTimestamps } = require('./services/assemblyai');
 const { translateUtterances } = require('./services/gemini');
 const { generateTTSForUtterances, synth } = require('./services/tts');
-const { mixAudioOnly } = require('./services/ffmpeg');
+const { mixAudioOnly, mixAudioForRecap } = require('./services/ffmpeg');
 const connectDB = require('./config/db');
 const Settings = require('./models/Settings');
 const { OAuth2Client } = require('google-auth-library');
@@ -356,14 +356,14 @@ app.post('/api/step2-translate', requireAuth, async (req, res) => {
 });
 
 
-// Step 3: Generate TTS and Mix Audio
+// Step 3: Generate TTS and Mix Audio (Dubbing Mode OR AI Recap Mode)
 app.post('/api/step3-tts', requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (user.role === 'restrict') return res.status(403).json({ error: 'သင့်အကောင့်ကို ပိတ်ပင်ထားပါသည်။ (Your account has been restricted.)' });
 
-    const { translatedUtterances, voice, videoDuration } = req.body;
+    const { translatedUtterances, voice, videoDuration, recapMode } = req.body;
     if (!translatedUtterances || !Array.isArray(translatedUtterances)) {
       return res.status(400).json({ error: 'Invalid translatedUtterances array provided' });
     }
@@ -371,31 +371,52 @@ app.post('/api/step3-tts', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Too many utterances. Maximum allowed is 500.' });
     }
     
-    console.log(`[Step 3] Generating TTS for ${translatedUtterances.length} utterances with voice ${voice || 'default'}...`);
+    const modeLabel = recapMode ? 'AI Recap' : 'Dubbing';
+    console.log(`[Step 3 - ${modeLabel}] Generating TTS for ${translatedUtterances.length} utterances...`);
     const ttsOutputDir = path.join(__dirname, 'uploads');
     
-    // Ensure uploads directory exists
     if (!fs.existsSync(ttsOutputDir)) {
       fs.mkdirSync(ttsOutputDir);
     }
 
     const utterancesWithAudio = await generateTTSForUtterances(translatedUtterances, ttsOutputDir, voice);
-    
-    console.log(`[Step 3] Mixing audio tracks...`);
-    const { finalAudioPath, completeVideoSegments, updatedUtterances: finalUtterances } = await mixAudioOnly(utterancesWithAudio, ttsOutputDir, videoDuration);
-    
-    console.log(`[Step 3] Skipping Cloudinary upload, using local URL to speed up...`);
+
+    console.log(`[Step 3] Mixing audio tracks (${modeLabel} mode)...`);
     const baseUrl = req.protocol + '://' + req.get('host');
-    const localUrl = `${baseUrl}/uploads/${path.basename(finalAudioPath)}`;
-    
-    // Cleanup temporary files EXCEPT the final mixed audio which we need for the frontend
+
+    if (recapMode) {
+      // ── AI Recap Mode: no audio speedup, compute new video timestamps ──
+      const { finalAudioPath, utterancesForVideo, totalVideoDuration } =
+        await mixAudioForRecap(utterancesWithAudio, ttsOutputDir, videoDuration);
+
+      // Cleanup TTS clips
+      utterancesWithAudio.forEach(u => {
+        if (u.audioFilePath && fs.existsSync(u.audioFilePath)) fs.unlinkSync(u.audioFilePath);
+      });
+
+      const localUrl = `${baseUrl}/uploads/${path.basename(finalAudioPath)}`;
+      console.log(`[Step 3 - AI Recap] Done. Total new video duration: ${totalVideoDuration.toFixed(2)}s`);
+      return res.json({
+        message: 'Recap processing complete',
+        url: localUrl,
+        finalAudioFilename: path.basename(finalAudioPath),
+        utterancesForVideo,
+        totalVideoDuration,
+        recapMode: true
+      });
+    }
+
+    // ── Dubbing Mode (unchanged) ──
+    const { finalAudioPath, completeVideoSegments, updatedUtterances: finalUtterances } =
+      await mixAudioOnly(utterancesWithAudio, ttsOutputDir, videoDuration);
+
+    // Cleanup TTS clips
     utterancesWithAudio.forEach(u => { 
-      if (u.audioFilePath && fs.existsSync(u.audioFilePath)) {
-        fs.unlinkSync(u.audioFilePath);
-      }
+      if (u.audioFilePath && fs.existsSync(u.audioFilePath)) fs.unlinkSync(u.audioFilePath);
     });
     
-    console.log(`[Step 3] Process finished successfully.`);
+    const localUrl = `${baseUrl}/uploads/${path.basename(finalAudioPath)}`;
+    console.log(`[Step 3 - Dubbing] Process finished successfully.`);
     res.json({ 
       message: 'Processing complete', 
       url: localUrl,
