@@ -1807,18 +1807,32 @@ ${textArray}`;
                   <div className="flex flex-col gap-3 mt-6">
                     {!translationMode ? (
                       isPremium ? (
-                        <button
-                          onClick={handleTranslate}
-                          disabled={loading}
-                          className="w-full py-4 rounded-2xl font-bold text-lg transition-all flex items-center justify-center gap-2 bg-green-600 text-white shadow-lg shadow-green-500/30 hover:bg-green-500"
-                        >
-                          {loading ? (
-                            <><Loader2 className="w-5 h-5 animate-spin" /> Translating...</>
-                          ) : (
-                            <>Step 2: Translate <Play className="w-5 h-5 fill-current" /></>
-                          )}
-                        </button>
+                        /* Premium: Auto Translate + Gemini App option */
+                        <>
+                          <button
+                            onClick={handleTranslate}
+                            disabled={loading}
+                            className="w-full py-4 rounded-2xl font-bold text-lg transition-all flex items-center justify-center gap-2 bg-green-600 text-white shadow-lg shadow-green-500/30 hover:bg-green-500"
+                          >
+                            {loading ? (
+                              <><Loader2 className="w-5 h-5 animate-spin" /> Translating...</>
+                            ) : (
+                              <>Step 2: Auto Translate <Play className="w-5 h-5 fill-current" /></>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setTranslationMode('manual');
+                              handleManualCopy();
+                            }}
+                            disabled={loading}
+                            className="w-full py-3 rounded-2xl font-bold text-sm transition-all flex items-center justify-center gap-2 bg-white/10 border border-white/20 text-white/80 hover:bg-white/20 hover:text-white"
+                          >
+                            🤖 Gemini App မှ တစ်ဆင့် ဘာသာပြန်မည်
+                          </button>
+                        </>
                       ) : (
+                        /* Free users: Gemini App + API key options */
                         <>
                           <button
                             onClick={() => {
