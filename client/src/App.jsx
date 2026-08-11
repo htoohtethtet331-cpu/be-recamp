@@ -394,11 +394,6 @@ function App() {
   const [translationMode, setTranslationMode] = useState(null); // 'manual' | 'api'
   const [geminiApiKey, setGeminiApiKey] = useState(localStorage.getItem('geminiApiKey') || '');
   const [assemblyAiKey, setAssemblyAiKey] = useState(localStorage.getItem('assemblyAiKey') || '');
-  // AI Recap SRT States
-  const [groqKeyRecap, setGroqKeyRecap] = useState(localStorage.getItem('groqKeyRecap') || '');
-  const [recapSrtLoading, setRecapSrtLoading] = useState(false);
-  const [recapSrtError, setRecapSrtError] = useState('');
-  const [recapSrtDone, setRecapSrtDone] = useState(false);
   const [manualTranslationInput, setManualTranslationInput] = useState('');
   const [copySuccess, setCopySuccess] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -807,80 +802,6 @@ function App() {
       setError('AI Recap video processing failed: ' + (err.message || err));
     } finally {
       setRecapMerging(false);
-    }
-  };
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // handleRecapSRT — AI Recap SRT Generator
-  //   1. WASM: extract audio from video (16kHz mono for Whisper efficiency)
-  //   2. Upload to /api/recap-srt with user's Groq key
-  //   3. Server: Groq whisper-large-v3 + word timestamps → 0.5s chunk SRT
-  //   4. Client: auto-download .srt file
-  //   ⚠️ Completely independent — does NOT touch dubbing/recap video pipeline
-  // ─────────────────────────────────────────────────────────────────────────
-  const handleRecapSRT = async () => {
-    if (!file) { setRecapSrtError('Video file မရှိပါ။ Video ဦးစွာ ရွေးချယ်ပါ။'); return; }
-    if (!groqKeyRecap || groqKeyRecap.trim() === '') {
-      setRecapSrtError('Groq API Key ထည့်ပါ။');
-      return;
-    }
-
-    setRecapSrtLoading(true);
-    setRecapSrtError('');
-    setRecapSrtDone(false);
-
-    try {
-      const ffmpeg = ffmpegRef.current;
-
-      // Extract audio optimized for Whisper (16kHz mono)
-      await ffmpeg.writeFile('srt_vin', await fetchFile(file));
-      await ffmpeg.exec([
-        '-i', 'srt_vin',
-        '-vn', '-ar', '16000', '-ac', '1',
-        '-b:a', '64k',
-        '-y', 'srt_aout.mp3'
-      ]);
-      const audioData = await ffmpeg.readFile('srt_aout.mp3');
-      const audioBlob = new Blob([audioData.buffer], { type: 'audio/mp3' });
-
-      // Cleanup WASM FS
-      await ffmpeg.deleteFile('srt_vin').catch(() => {});
-      await ffmpeg.deleteFile('srt_aout.mp3').catch(() => {});
-
-      // Upload to server
-      const formData = new FormData();
-      formData.append('audio', audioBlob, 'recap_audio.mp3');
-      formData.append('groqKey', groqKeyRecap.trim());
-
-      const token = localStorage.getItem('token');
-      const response = await axios.post(`${apiUrl}/recap-srt`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        timeout: 180000 // 3 min for long videos
-      });
-
-      // Auto-download .srt
-      const srtBlob = new Blob([response.data.srt], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(srtBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = (file.name.replace(/\.[^.]+$/, '') || 'recap') + '.srt';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      setRecapSrtDone(true);
-      console.log(`[Recap SRT] Done: ${response.data.entryCount} entries, ${response.data.wordCount} words`);
-
-    } catch (err) {
-      const msg = err.response?.data?.details || err.response?.data?.error || err.message || 'SRT generation failed';
-      setRecapSrtError(msg);
-      console.error('[Recap SRT]', err);
-    } finally {
-      setRecapSrtLoading(false);
     }
   };
 
@@ -1840,68 +1761,6 @@ ${textArray}`;
                   )}
                 </div>
 
-                {/* AI Recap Mode: SRT Generator Tool */}
-                {processingMode === 'recap' && file && (
-                  <div className="mt-4 bg-gradient-to-br from-slate-900/60 to-orange-950/30 border border-orange-500/20 rounded-2xl p-5 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">📝</span>
-                      <h3 className="font-bold text-orange-300 text-sm">AI Recap SRT Generator</h3>
-                      <span className="text-[10px] bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full font-bold">0.5s chunks</span>
-                    </div>
-                    <p className="text-xs text-white/50 leading-relaxed">
-                      Groq Whisper ကိုသုံးပြီး video ကို transcript လုပ်မည်။ စာကြောင်းတိုတိုနဲ့ 0.5 second တစ်ကြောင်းနှုန်း .srt file ထုတ်ပေးမည်။
-                    </p>
-
-                    {/* Groq API Key Input */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs text-white/60 font-medium">Groq API Key</label>
-                      <input
-                        type="password"
-                        value={groqKeyRecap}
-                        onChange={(e) => {
-                          setGroqKeyRecap(e.target.value);
-                          localStorage.setItem('groqKeyRecap', e.target.value);
-                          setRecapSrtDone(false);
-                          setRecapSrtError('');
-                        }}
-                        placeholder="gsk_..."
-                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/30 transition-all text-sm"
-                      />
-                      <p className="text-[10px] text-white/30">🔒 Browser ထဲတွင်သာ သိမ်းဆည်းမည်။ Server သို့ မပို့ပါ။</p>
-                    </div>
-
-                    {/* Error */}
-                    {recapSrtError && (
-                      <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2 text-xs text-red-400">
-                        ⚠️ {recapSrtError}
-                      </div>
-                    )}
-
-                    {/* Success */}
-                    {recapSrtDone && (
-                      <div className="bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-2 text-xs text-green-400">
-                        ✅ SRT file ကို download ပြီးပါပြီ!
-                      </div>
-                    )}
-
-                    {/* Generate Button */}
-                    <button
-                      onClick={handleRecapSRT}
-                      disabled={recapSrtLoading || !file || !groqKeyRecap.trim()}
-                      className={`w-full py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
-                        recapSrtLoading || !file || !groqKeyRecap.trim()
-                          ? 'bg-white/10 text-white/40 cursor-not-allowed'
-                          : 'bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white shadow-lg shadow-orange-500/20'
-                      }`}
-                    >
-                      {recapSrtLoading ? (
-                        <><Loader2 className="w-4 h-4 animate-spin" /> Transcribing... (ကြာနိုင်ပါသည်)</>
-                      ) : (
-                        <><Download className="w-4 h-4" /> SRT ထုတ်မည် (Groq Whisper)</>
-                      )}
-                    </button>
-                  </div>
-                )}
 
                 {step === 1 && (
                   <button
