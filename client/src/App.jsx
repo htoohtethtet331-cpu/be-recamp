@@ -514,70 +514,73 @@ function App() {
 
   // ─────────────────────────────────────────────────────────────────
   // handleAutoProcess: Full Dubbing Pipeline
-  //   1. WASM: extract audio from video (client-side, fast demux)
-  //   2. Server Step 1: upload audio+video → transcribe → get videoStorageKey
+  //   0. Upload video to server first → get videoStorageKey
+  //   1. WASM: extract audio from video (client-side demux)
+  //   2. Server Step 1: upload audio only → transcribe
   //   3. Server Step 2: translate utterances
-  //   4. Server Step 3: TTS per utterance, mix audio (1.3x–1.6x speed)
+  //   4. Server Step 3: TTS per utterance, mix audio (1.3x–1.6x)
   //   5. Server Step 4: mux stored video + mixed audio → download URL
   // ─────────────────────────────────────────────────────────────────
   const handleAutoProcess = async () => {
     if (!file) { setError('Please select a video file first.'); return; }
-    if (user?.role !== 'admin' && (user?.videoLimit === undefined || user?.videoLimit <= 0) && user?.role !== 'free') {
-      setError('Video limit reached. You have 0 credits remaining.');
-      return;
-    }
 
     setLoading(true);
     setFfmpegProgress(0);
     setError('');
     setFinalVideoUrl('');
     setAutoStep(1);
-    setAutoProgress(5);
+    setAutoProgress(3);
 
     const token = localStorage.getItem('token');
 
     try {
-      // ── Step A: Extract audio from video using WASM (client-side) ──
-      const ffmpeg = ffmpegRef.current;
-      await ffmpeg.writeFile('input_video.mp4', await fetchFile(file));
-      setAutoProgress(12);
-      await ffmpeg.exec(['-i', 'input_video.mp4', '-vn', '-c:a', 'libmp3lame', '-b:a', '128k', 'extracted_audio.mp3']);
-      const audioData = await ffmpeg.readFile('extracted_audio.mp3');
-      // Clean up WASM memory
-      await ffmpeg.deleteFile('input_video.mp4').catch(() => {});
-      await ffmpeg.deleteFile('extracted_audio.mp3').catch(() => {});
-
-      // ── Step 1: Upload audio + video → transcribe → get videoStorageKey ──
-      setAutoStep(2); setAutoProgress(20);
-      const step1Form = new FormData();
-      step1Form.append('audio', new File([new Blob([audioData.buffer], { type: 'audio/mp3' })], 'extracted_audio.mp3', { type: 'audio/mp3' }));
-      step1Form.append('video', file);
-      if (assemblyAiKey) step1Form.append('assemblyAiKey', assemblyAiKey);
-
-      const extractRes = await axios.post(`${apiUrl}/step1-extract`, step1Form, {
+      // ── Step 0: Upload original video to server FIRST (before WASM) ──
+      // Reason: After WASM runs, the File object may be in a modified state.
+      // Uploading first ensures the server receives the clean original file.
+      setAutoProgress(5);
+      const videoForm = new FormData();
+      videoForm.append('video', file);
+      const uploadRes = await axios.post(`${apiUrl}/upload-video`, videoForm, {
         headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${token}` },
         onUploadProgress: (e) => {
           const pct = (e.loaded / (e.total || 1)) * 100;
-          setAutoProgress(20 + pct * 0.15); // 20–35%
+          setAutoProgress(5 + pct * 0.20); // 5–25%
         }
       });
+      const videoStorageKey = uploadRes.data.videoStorageKey;
+      if (!videoStorageKey) throw new Error('Server did not return videoStorageKey.');
 
+      // ── Step A: Extract audio from video using WASM (client-side) ──
+      setAutoStep(2); setAutoProgress(27);
+      const ffmpeg = ffmpegRef.current;
+      await ffmpeg.writeFile('input_video.mp4', await fetchFile(file));
+      setAutoProgress(30);
+      await ffmpeg.exec(['-i', 'input_video.mp4', '-vn', '-c:a', 'libmp3lame', '-b:a', '128k', 'extracted_audio.mp3']);
+      const audioData = await ffmpeg.readFile('extracted_audio.mp3');
+      await ffmpeg.deleteFile('input_video.mp4').catch(() => {});
+      await ffmpeg.deleteFile('extracted_audio.mp3').catch(() => {});
+
+      // ── Step 1: Upload audio → transcribe ──
+      setAutoProgress(38);
+      const step1Form = new FormData();
+      step1Form.append('audio', new File([new Blob([audioData.buffer], { type: 'audio/mp3' })], 'extracted_audio.mp3', { type: 'audio/mp3' }));
+      if (assemblyAiKey) step1Form.append('assemblyAiKey', assemblyAiKey);
+
+      const extractRes = await axios.post(`${apiUrl}/step1-extract`, step1Form, {
+        headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${token}` }
+      });
       if (extractRes.data.remainingLimit !== undefined && setUser) {
         setUser({ ...user, videoLimit: extractRes.data.remainingLimit, freeVideosUsed: extractRes.data.freeVideosUsed ?? user.freeVideosUsed, lastFreeVideoDate: extractRes.data.lastFreeVideoDate ?? user.lastFreeVideoDate });
       }
-
       const extractedUtterances = extractRes.data.utterances;
-      const videoStorageKey = extractRes.data.videoStorageKey;
-
-      if (!videoStorageKey) throw new Error('Server did not return videoStorageKey. Please contact support.');
 
       // ── Step 2: Translate ──
-      setAutoStep(3); setAutoProgress(40);
+      setAutoStep(3); setAutoProgress(48);
       const translateRes = await axios.post(`${apiUrl}/step2-translate`, { utterances: extractedUtterances }, { headers: { Authorization: `Bearer ${token}` } });
       const translatedUtterances = translateRes.data.translatedUtterances;
 
-      // ── Step 3: TTS + Mix Audio (1.3x default, up to 1.6x, gaps = silence) ──
-      setAutoStep(4); setAutoProgress(58);
+      // ── Step 3: TTS + Mix Audio (1.3x default, up to 1.6x max, silent gaps = no audio) ──
+      setAutoStep(4); setAutoProgress(62);
       const finalPitch = Number(selectedVoice.pitch.replace('Hz', '')) + pitchOffset;
       const voicePayload = {
         voice: selectedVoice.voice,
@@ -587,11 +590,10 @@ function App() {
       const ttsRes = await axios.post(`${apiUrl}/step3-tts`, { translatedUtterances, voice: voicePayload, videoDuration }, { headers: { Authorization: `Bearer ${token}` } });
       const audioUrl = ttsRes.data.url;
       const audioFilename = ttsRes.data.finalAudioFilename;
-
       if (!audioFilename) throw new Error('Server did not return audioFilename from Step 3.');
 
-      // ── Step 4: Server mux video (muted) + dubbed audio ──
-      setAutoStep(5); setAutoProgress(75);
+      // ── Step 4: Server mux (video muted + dubbed audio) ──
+      setAutoStep(5); setAutoProgress(82);
       const renderRes = await axios.post(`${apiUrl}/step4-render`,
         { audioFilename, videoStorageKey },
         { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } }
@@ -599,7 +601,6 @@ function App() {
 
       setAutoProgress(100);
       setAutoStep(6);
-
       setUtterances(ttsRes.data.updatedUtterances || ttsRes.data.utterances || []);
       setPreviewAudioUrl(audioUrl);
       setVideoSegments(ttsRes.data.videoSegments || []);

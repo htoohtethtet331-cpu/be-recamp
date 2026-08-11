@@ -245,18 +245,32 @@ app.put('/api/admin/users/:id/limit', requireAdmin, async (req, res) => {
 
 // --- Main App Endpoints ---
 
-// Step 1: Extract Audio, Transcribe, and store original video on server
-// Accepts multipart: audio=<mp3>, video=<original_video>, assemblyAiKey=<key>
-app.post('/api/step1-extract', requireAuth, videoUpload.fields([
-  { name: 'audio', maxCount: 1 },
-  { name: 'video', maxCount: 1 }
-]), async (req, res) => {
-  let videoPath = null;
+// Pre-Step: Store original video on server, return videoStorageKey
+// Called BEFORE WASM extraction so File object is fresh and unmodified
+app.post('/api/upload-video', requireAuth, videoUpload.single('video'), async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.role === 'restrict') return res.status(403).json({ error: 'Your account is restricted.' });
+    if (!req.file) return res.status(400).json({ error: 'No video file provided' });
+
+    const videoStorageKey = req.file.filename;
+    console.log(`[Upload Video] Stored: ${videoStorageKey} (${Math.round(req.file.size / 1024 / 1024)}MB)`);
+    res.json({ videoStorageKey });
+  } catch (error) {
+    console.error('[Upload Video] Error:', error);
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
     }
+    res.status(500).json({ error: 'Video upload failed', details: error.message });
+  }
+});
+
+// Step 1: Extract Audio and Transcribe (audio only)
+app.post('/api/step1-extract', requireAuth, upload.single('audio'), async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
     const today = new Date().toISOString().split('T')[0];
     
     if (user.role === 'restrict') {
@@ -273,78 +287,42 @@ app.post('/api/step1-extract', requireAuth, videoUpload.fields([
       }
     } else if (user.role === 'premium') {
       if (user.videoLimit <= 0) {
-        user.role = 'free';
-        user.videoLimit = 0;
-        await user.save();
+        user.role = 'free'; user.videoLimit = 0; await user.save();
         return res.status(403).json({ error: 'Video limit reached. You have been downgraded to the Free plan.' });
       }
     }
 
-    const audioFile = req.files?.audio?.[0];
-    const videoFile = req.files?.video?.[0];
-    
-    if (!audioFile) {
-      return res.status(400).json({ error: 'No audio file provided' });
-    }
-    if (!videoFile) {
-      return res.status(400).json({ error: 'No video file provided' });
-    }
-    
-    videoPath = videoFile.path;
-    
-    console.log(`[Step 1] Audio: ${audioFile.originalname}, Video: ${videoFile.originalname}. Transcribing...`);
-    
+    if (!req.file) return res.status(400).json({ error: 'No audio file provided' });
+
     let assemblyAiKey = req.body.assemblyAiKey;
-    
-    if (!assemblyAiKey) {
-      return res.status(403).json({ error: 'Everyone must provide their own AssemblyAI API key.' });
-    }
-    
+    if (!assemblyAiKey) return res.status(403).json({ error: 'Everyone must provide their own AssemblyAI API key.' });
+
     const settings = await Settings.findOne();
-    if (settings && settings.groqKey) {
-      process.env.GROQ_API_KEY = settings.groqKey;
-    }
+    if (settings?.groqKey) process.env.GROQ_API_KEY = settings.groqKey;
 
-    const utterances = await getTranscriptAndTimestamps(audioFile.path, assemblyAiKey, user.role === 'free');
+    console.log(`[Step 1] Transcribing ${req.file.originalname}...`);
+    const utterances = await getTranscriptAndTimestamps(req.file.path, assemblyAiKey, user.role === 'free');
 
-    // Cleanup audio file (not needed anymore)
-    if (audioFile.path && fs.existsSync(audioFile.path)) {
-      try { fs.unlinkSync(audioFile.path); } catch (_) {}
+    // Cleanup audio (no longer needed)
+    if (req.file.path && fs.existsSync(req.file.path)) {
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
     }
 
     // Update limits on success
     let remainingLimit = 0;
     if (user.role === 'free') {
-      user.freeVideosUsed += 1;
-      user.lastFreeVideoDate = new Date();
+      user.freeVideosUsed += 1; user.lastFreeVideoDate = new Date();
       remainingLimit = Math.max(0, 3 - user.freeVideosUsed);
       await user.save();
     } else if (user.role === 'premium') {
-      user.videoLimit -= 1;
-      remainingLimit = user.videoLimit;
-      await user.save();
+      user.videoLimit -= 1; remainingLimit = user.videoLimit; await user.save();
     } else {
       remainingLimit = Infinity;
     }
 
-    // Return videoStorageKey so Step 4 can mux without re-upload
-    const videoStorageKey = videoFile.filename;
-    
-    console.log(`[Step 1] Complete. Found ${utterances.length} utterances. VideoKey: ${videoStorageKey}`);
-    res.json({ 
-      utterances,
-      videoId: videoStorageKey,
-      videoStorageKey,
-      remainingLimit,
-      role: user.role,
-      freeVideosUsed: user.freeVideosUsed,
-      lastFreeVideoDate: user.lastFreeVideoDate
-    });
+    console.log(`[Step 1] Complete. Found ${utterances.length} utterances.`);
+    res.json({ utterances, remainingLimit, role: user.role, freeVideosUsed: user.freeVideosUsed, lastFreeVideoDate: user.lastFreeVideoDate });
   } catch (error) {
-    // Cleanup video on error
-    if (videoPath && fs.existsSync(videoPath)) {
-      try { fs.unlinkSync(videoPath); } catch (_) {}
-    }
     console.error('Step 1 Error:', error);
     res.status(500).json({ error: 'Extraction & Transcription failed', details: error.message });
   }
