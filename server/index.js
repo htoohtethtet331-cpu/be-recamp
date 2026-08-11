@@ -451,10 +451,18 @@ app.post('/api/tts-preview', requireAuth, async (req, res) => {
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
-  // Set static folder
-  app.use(express.static(path.join(__dirname, '../client/dist')));
+  // Assets (JS/CSS) can be cached forever (Vite adds content hash to filenames)
+  app.use(express.static(path.join(__dirname, '../client/dist'), {
+    maxAge: '1y',
+    immutable: true,
+    index: false, // Don't auto-serve index.html — we handle it below with no-cache
+  }));
 
+  // index.html must NEVER be cached — it references hashed JS/CSS filenames
   app.get(/(.*)/, (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(path.resolve(__dirname, '../client', 'dist', 'index.html'));
   });
 }

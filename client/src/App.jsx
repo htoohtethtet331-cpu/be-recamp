@@ -1590,38 +1590,52 @@ ${textArray}`;
               </div>
             )}
 
-            {/* Step 4: Result (Audio, Subtitles, Final Video) */}
-            {/* Step 4: Result (Audio, Subtitles, Final Video) */}
+            {/* Step 4: Result - Audio Preview + Downloads */}
             {step >= 4 && downloadUrl && (
-              <div className="bg-white/5 backdrop-blur-xl rounded-3xl p-6 border border-white/5 space-y-4 mt-6">
+              <div className="bg-white/5 backdrop-blur-xl rounded-3xl p-6 border border-white/5 space-y-5 mt-6">
                 <h2 className="font-bold text-white text-xl">Step 4: ရလဒ်များ (Results)</h2>
-                <p className="text-sm text-white/80">အောက်ပါဖိုင်များကို Download ရယူနိုင်ပါသည်။</p>
+                <p className="text-sm text-white/70">Dubbed audio ကို Preview နားထောင်ပြီး Download ရယူနိုင်ပါသည်။</p>
 
-                <div className="bg-white/10/20 p-4 rounded-xl border border-white/30 flex flex-col items-center gap-4">
-                  <div className="flex flex-col w-full gap-3 mt-2">
-                    <button
-                      onClick={handleDownloadSRT}
-                      className="w-full py-3 bg-purple-600 text-white text-center rounded-xl font-bold text-sm hover:bg-purple-700 transition shadow-lg shadow-purple-500/30 flex items-center justify-center gap-2"
+                {/* Audio Preview Player */}
+                {(downloadUrl || previewAudioUrl) && (
+                  <div className="bg-white/10 rounded-2xl p-4 border border-white/10">
+                    <p className="text-xs text-white/50 mb-2 font-medium uppercase tracking-wider">🎧 Dubbed Audio Preview</p>
+                    <audio
+                      controls
+                      src={downloadUrl || previewAudioUrl}
+                      className="w-full"
+                      style={{ accentColor: '#a855f7' }}
                     >
-                      <Download className="w-4 h-4" /> Download Subtitles (.srt)
-                    </button>
-
-                    {/* Download dubbed MP3 audio */}
-                    {downloadUrl && (
-                      <a
-                        href={downloadUrl}
-                        download="dubbed_audio.mp3"
-                        className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold rounded-2xl shadow-lg hover:shadow-purple-500/30 transition-all flex items-center justify-center gap-3 text-lg mt-2"
-                      >
-                        <Download className="w-6 h-6" /> Download Dubbed Audio (.mp3)
-                      </a>
-                    )}
+                      Your browser does not support the audio element.
+                    </audio>
                   </div>
+                )}
+
+                {/* Download Buttons */}
+                <div className="flex flex-col w-full gap-3">
+                  {/* Download MP3 */}
+                  {downloadUrl && (
+                    <a
+                      href={downloadUrl}
+                      download="dubbed_audio.mp3"
+                      className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold rounded-2xl shadow-lg hover:shadow-purple-500/30 transition-all flex items-center justify-center gap-3 text-lg"
+                    >
+                      <Download className="w-6 h-6" /> Download Dubbed Audio (.mp3)
+                    </a>
+                  )}
+
+                  {/* Download SRT */}
+                  <button
+                    onClick={handleDownloadSRT}
+                    className="w-full py-3 bg-white/10 hover:bg-white/20 text-white text-center rounded-xl font-semibold text-sm transition flex items-center justify-center gap-2 border border-white/10"
+                  >
+                    <Download className="w-4 h-4" /> Download Subtitles (.srt)
+                  </button>
                 </div>
 
-                <div className="flex flex-col pt-4 gap-3">
-                  <p className="text-center text-white/50 text-xs leading-relaxed px-2">
-                    <span className="text-white/70 font-semibold">မှတ်ချက်:</span> Dubbed MP3 ကို Download ရယူပြီး မူရင်း Video နဲ့ ပေါင်းစပ် Edit လုပ်နိုင်ပါသည်။
+                <div className="flex flex-col gap-3 pt-1">
+                  <p className="text-center text-white/40 text-xs leading-relaxed px-2">
+                    <span className="text-white/60 font-semibold">မှတ်ချက်:</span> Dubbed MP3 ကို Download ရယူပြီး မူရင်း Video နဲ့ ပေါင်းစပ် Edit လုပ်နိုင်ပါသည်။
                   </p>
                   <button
                     onClick={resetFlow}
@@ -1633,6 +1647,7 @@ ${textArray}`;
                 </div>
               </div>
             )}
+
 
 
 
