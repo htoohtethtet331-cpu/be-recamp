@@ -24,7 +24,7 @@ async function callGeminiWithRetry(apiKey, prompt, retries = 3) {
             generationConfig: {
               temperature: 0.1,
               responseMimeType: 'application/json',
-              maxOutputTokens: 2500,
+              maxOutputTokens: 4096,  // increased from 2500 to prevent truncation
             },
           }),
         }
@@ -40,7 +40,7 @@ async function callGeminiWithRetry(apiKey, prompt, retries = 3) {
         body: JSON.stringify({
           model: 'google/gemini-2.5-flash',
           temperature: 0.1,
-          max_tokens: 1500,
+          max_tokens: 4000,  // increased from 1500 — Burmese text uses more tokens than English
           messages: [{ role: 'user', content: prompt }],
         }),
       });
@@ -120,8 +120,10 @@ const translateUtterances = async (utterances, geminiKey) => {
     throw new Error('Gemini API Key မပေးမိသေးပါ။ Admin Panel မှ Gemini API Key ထည့်သွင်းပေးပါ။');
   }
 
-  // Reduced from 35 to 15 to prevent exceeding 1500 max_tokens limit
-  const BATCH_SIZE = 15;
+  // Batch size: 10 utterances per request
+  // Burmese translations use ~3-4x more tokens than English source,
+  // so 10 is safer than 15 to avoid truncation at 4000 max_tokens.
+  const BATCH_SIZE = 10;
   const results = [];
   let previousTranslation = '';
 
