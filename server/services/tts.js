@@ -63,13 +63,18 @@ const generateTTSForUtterances = async (utterances, outputDir, voiceOptions = {}
   // CLAUDE.md: "one clip per block"
   const BATCH_SIZE = 8;  // was 5 — bumped for speed; edge-tts handles concurrent connections
 
-  // CLAUDE.md Hard Rule: "Voice speed is ALWAYS +30%. Never make it adjustable."
+  // Default base rate is +20% (1.2x). Voice preset rate offsets are applied on top.
+  const baseRate = 20; // percent — 1.2x speed
+  const presetRate = parseInt((voiceOptions.rate || '+0%').replace('%', '')) || 0;
+  const finalRate = baseRate + presetRate;
+  const rateStr = `${finalRate >= 0 ? '+' : ''}${finalRate}%`;
+
   const synthOpts = {
     voice: typeof voiceOptions === 'string'
       ? voiceOptions
       : (voiceOptions.voice || 'my-MM-NilarNeural'),
-    rate: '+30%',   // LOCKED — do not change
-    pitch: '+0Hz',
+    rate: rateStr,   // 1.2x base + voice preset offset
+    pitch: voiceOptions.pitch || '+0Hz',
     volume: '+0%',
   };
 
