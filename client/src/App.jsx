@@ -593,10 +593,12 @@ function App() {
       if (!audioFilename) throw new Error('Server did not return audioFilename from Step 3.');
 
       // ── Step 4: Server mux (video muted + dubbed audio) ──
+      // Send as URL query params — proxy-safe, no body parsing needed on server
       setAutoStep(5); setAutoProgress(82);
-      const renderRes = await axios.post(`${apiUrl}/step4-render`,
-        { audioFilename, videoStorageKey },
-        { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } }
+      const renderRes = await axios.post(
+        `${apiUrl}/step4-render?audioFilename=${encodeURIComponent(audioFilename)}&videoStorageKey=${encodeURIComponent(videoStorageKey)}`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
       setAutoProgress(100);

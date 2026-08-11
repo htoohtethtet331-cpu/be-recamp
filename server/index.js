@@ -476,7 +476,9 @@ app.post('/api/step4-render', requireAuth, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (user.role === 'restrict') return res.status(403).json({ error: 'Your account is restricted.' });
 
-    const { audioFilename, videoStorageKey } = req.body;
+    // Read from query params (proxy-safe) OR body as fallback
+    const audioFilename = req.query.audioFilename || req.body?.audioFilename;
+    const videoStorageKey = req.query.videoStorageKey || req.body?.videoStorageKey;
     if (!audioFilename) return res.status(400).json({ error: 'audioFilename is required' });
     if (!videoStorageKey) return res.status(400).json({ error: 'videoStorageKey is required' });
 
