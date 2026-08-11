@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
-import { Check, CheckCircle2, Download, RefreshCw, Play, Loader2, AlertTriangle, SlidersHorizontal, ArrowRight, Video, Sparkles, Copy, Settings, LogOut, UploadCloud, Headphones, Zap, X, CreditCard, HelpCircle, KeyRound, ChevronDown } from 'lucide-react';
+import { Check, CheckCircle2, Download, RefreshCw, Play, Loader2, AlertTriangle, SlidersHorizontal, ArrowRight, Video, Sparkles, Copy, Settings, LogOut, UploadCloud, Headphones, Zap, X, CreditCard, HelpCircle, KeyRound, ChevronDown, Film } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from './context/AuthContext';
@@ -368,6 +368,9 @@ function App() {
   const [audioFilename, setAudioFilename] = useState('');
   const [error, setError] = useState('');
   const [finalVideoUrl, setFinalVideoUrl] = useState('');
+  const [mergedVideoUrl, setMergedVideoUrl] = useState(''); // Client-side WASM merged video
+  const [merging, setMerging] = useState(false);
+  const [mergeProgress, setMergeProgress] = useState(0);
 
   // Wizard States
   const [step, setStep] = useState(1);
@@ -588,7 +591,68 @@ function App() {
     }
   };
 
+  // ─────────────────────────────────────────────────────────────────
+  // handleMergeVideo: Client-side WASM merge
+  //   1. Load original video from `file` state into WASM
+  //   2. Fetch dubbed audio from server URL into WASM
+  //   3. ffmpeg mux: video (muted) + dubbed audio → MP4 blob
+  //   4. Create object URL for preview + download
+  // ─────────────────────────────────────────────────────────────────
+  const handleMergeVideo = async () => {
+    if (!file) { setError('Original video file not found. Please start a new project.'); return; }
+    if (!downloadUrl) { setError('Dubbed audio not ready. Please complete Step 3 first.'); return; }
 
+    setMerging(true);
+    setMergeProgress(5);
+    setMergedVideoUrl('');
+
+    try {
+      const ffmpeg = ffmpegRef.current;
+
+      // Load original video into WASM
+      setMergeProgress(10);
+      await ffmpeg.writeFile('input_video.mp4', await fetchFile(file));
+      setMergeProgress(30);
+
+      // Fetch dubbed audio from server and load into WASM
+      const audioResp = await fetch(downloadUrl);
+      const audioBlob = await audioResp.blob();
+      const audioData = new Uint8Array(await audioBlob.arrayBuffer());
+      await ffmpeg.writeFile('dubbed_audio.mp3', audioData);
+      setMergeProgress(50);
+
+      // Mux: copy video stream (muted) + dubbed audio track
+      await ffmpeg.exec([
+        '-i', 'input_video.mp4',
+        '-i', 'dubbed_audio.mp3',
+        '-c:v', 'copy',        // No re-encode video (fast)
+        '-c:a', 'aac',         // Encode audio to AAC for MP4 container
+        '-map', '0:v:0',       // Video from input 0
+        '-map', '1:a:0',       // Audio from input 1 (dubbed)
+        '-shortest',           // End when shorter stream ends
+        '-y', 'output.mp4'
+      ]);
+      setMergeProgress(90);
+
+      // Read output and create blob URL
+      const outputData = await ffmpeg.readFile('output.mp4');
+      const blob = new Blob([outputData.buffer], { type: 'video/mp4' });
+      const url = URL.createObjectURL(blob);
+      setMergedVideoUrl(url);
+      setMergeProgress(100);
+
+      // Cleanup WASM memory
+      await ffmpeg.deleteFile('input_video.mp4').catch(() => {});
+      await ffmpeg.deleteFile('dubbed_audio.mp3').catch(() => {});
+      await ffmpeg.deleteFile('output.mp4').catch(() => {});
+
+    } catch (err) {
+      console.error('[handleMergeVideo]', err);
+      setError('Video merge failed: ' + (err.message || err));
+    } finally {
+      setMerging(false);
+    }
+  };
 
   const handleCancelAutoProcess = () => {
     if (ffmpegRef.current) {
@@ -1590,11 +1654,11 @@ ${textArray}`;
               </div>
             )}
 
-            {/* Step 4: Result - Audio Preview + Downloads */}
+            {/* Step 4: Result - Audio Preview + Video Merge + Downloads */}
             {step >= 4 && downloadUrl && (
               <div className="bg-white/5 backdrop-blur-xl rounded-3xl p-6 border border-white/5 space-y-5 mt-6">
                 <h2 className="font-bold text-white text-xl">Step 4: ရလဒ်များ (Results)</h2>
-                <p className="text-sm text-white/70">Dubbed audio ကို Preview နားထောင်ပြီး Download ရယူနိုင်ပါသည်။</p>
+                <p className="text-sm text-white/70">Dubbed audio ကို Preview နားထောင်ပြီး Video နဲ့ ပေါင်းစပ်နိုင်ပါသည်။</p>
 
                 {/* Audio Preview Player */}
                 {(downloadUrl || previewAudioUrl) && (
@@ -1611,6 +1675,68 @@ ${textArray}`;
                   </div>
                 )}
 
+                {/* ─── Merge with Original Video (Client-side WASM) ─── */}
+                {!mergedVideoUrl && (
+                  <div className="bg-white/5 rounded-2xl p-4 border border-white/10 space-y-3">
+                    <p className="text-xs text-white/60 font-medium uppercase tracking-wider">🎬 မူရင်း Video နဲ့ ပေါင်းစပ်မည်</p>
+                    <p className="text-xs text-white/40 leading-relaxed">
+                      မူရင်း Video ကို mute ပြီး Dubbed Audio ကို ပေါင်းပေး — Internet မလိုဘဲ ဖုန်းမှာပဲ လုပ်ဆောင်မည်
+                    </p>
+                    {merging && (
+                      <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500 rounded-full"
+                          style={{ width: `${mergeProgress}%` }}
+                        />
+                      </div>
+                    )}
+                    <button
+                      onClick={handleMergeVideo}
+                      disabled={merging || !file}
+                      className={`w-full py-4 rounded-2xl font-bold text-lg transition-all flex items-center justify-center gap-3 ${
+                        merging
+                          ? 'bg-white/10 text-white/50 cursor-not-allowed'
+                          : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg shadow-blue-500/20'
+                      }`}
+                    >
+                      {merging ? (
+                        <><Loader2 className="w-6 h-6 animate-spin" /> Merging... {Math.round(mergeProgress)}%</>
+                      ) : (
+                        <><Film className="w-6 h-6" /> Video + Audio ပေါင်းစပ်မည်</>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* Merged Video Preview + Download */}
+                {mergedVideoUrl && (
+                  <div className="bg-white/5 rounded-2xl p-4 border border-green-500/20 space-y-3">
+                    <p className="text-xs text-green-400 font-medium uppercase tracking-wider">✅ Dubbed Video Ready!</p>
+                    <video
+                      controls
+                      src={mergedVideoUrl}
+                      className="w-full rounded-xl"
+                      style={{ maxHeight: '280px', background: '#000' }}
+                      playsInline
+                    />
+                    <div className="flex flex-col gap-2">
+                      <a
+                        href={mergedVideoUrl}
+                        download="dubbed_video.mp4"
+                        className="w-full py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-3 text-lg"
+                      >
+                        <Download className="w-6 h-6" /> Download Dubbed Video (.mp4)
+                      </a>
+                      <button
+                        onClick={() => { setMergedVideoUrl(''); setMergeProgress(0); }}
+                        className="w-full py-2 bg-white/10 hover:bg-white/20 text-white/60 rounded-xl text-sm transition"
+                      >
+                        ပြန်လုပ်မည် (Re-merge)
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Download Buttons */}
                 <div className="flex flex-col w-full gap-3">
                   {/* Download MP3 */}
@@ -1618,9 +1744,9 @@ ${textArray}`;
                     <a
                       href={downloadUrl}
                       download="dubbed_audio.mp3"
-                      className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold rounded-2xl shadow-lg hover:shadow-purple-500/30 transition-all flex items-center justify-center gap-3 text-lg"
+                      className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold rounded-2xl shadow-lg hover:shadow-purple-500/30 transition-all flex items-center justify-center gap-3"
                     >
-                      <Download className="w-6 h-6" /> Download Dubbed Audio (.mp3)
+                      <Download className="w-5 h-5" /> Download Dubbed Audio (.mp3)
                     </a>
                   )}
 
@@ -1634,9 +1760,6 @@ ${textArray}`;
                 </div>
 
                 <div className="flex flex-col gap-3 pt-1">
-                  <p className="text-center text-white/40 text-xs leading-relaxed px-2">
-                    <span className="text-white/60 font-semibold">မှတ်ချက်:</span> Dubbed MP3 ကို Download ရယူပြီး မူရင်း Video နဲ့ ပေါင်းစပ် Edit လုပ်နိုင်ပါသည်။
-                  </p>
                   <button
                     onClick={resetFlow}
                     disabled={loading}
@@ -1647,6 +1770,7 @@ ${textArray}`;
                 </div>
               </div>
             )}
+
 
 
 
