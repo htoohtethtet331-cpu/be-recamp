@@ -56,7 +56,9 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Set up temporary storage for multer
@@ -243,8 +245,13 @@ app.put('/api/admin/users/:id/limit', requireAdmin, async (req, res) => {
 
 // --- Main App Endpoints ---
 
-// Step 1: Extract Audio and Transcribe
-app.post('/api/step1-extract', requireAuth, upload.single('audio'), async (req, res) => {
+// Step 1: Extract Audio, Transcribe, and store original video on server
+// Accepts multipart: audio=<mp3>, video=<original_video>, assemblyAiKey=<key>
+app.post('/api/step1-extract', requireAuth, videoUpload.fields([
+  { name: 'audio', maxCount: 1 },
+  { name: 'video', maxCount: 1 }
+]), async (req, res) => {
+  let videoPath = null;
   try {
     const user = await User.findById(req.user.id);
     if (!user) {
@@ -269,34 +276,41 @@ app.post('/api/step1-extract', requireAuth, upload.single('audio'), async (req, 
         user.role = 'free';
         user.videoLimit = 0;
         await user.save();
-        return res.status(403).json({ error: 'Video limit reached. You have been downgraded to the Free plan. Please provide your own API key to use free videos.' });
+        return res.status(403).json({ error: 'Video limit reached. You have been downgraded to the Free plan.' });
       }
     }
 
-    if (!req.file) {
+    const audioFile = req.files?.audio?.[0];
+    const videoFile = req.files?.video?.[0];
+    
+    if (!audioFile) {
       return res.status(400).json({ error: 'No audio file provided' });
     }
-    console.log(`[Step 1] File received: ${req.file.originalname}. Transcribing via Groq...`);
+    if (!videoFile) {
+      return res.status(400).json({ error: 'No video file provided' });
+    }
     
-    // We already have the audio extracted by the client!
+    videoPath = videoFile.path;
+    
+    console.log(`[Step 1] Audio: ${audioFile.originalname}, Video: ${videoFile.originalname}. Transcribing...`);
+    
     let assemblyAiKey = req.body.assemblyAiKey;
     
     if (!assemblyAiKey) {
       return res.status(403).json({ error: 'Everyone must provide their own AssemblyAI API key.' });
     }
     
-    // Also prepare Groq key from database to pass it if needed (currently AssemblyAI service uses process.env.GROQ_API_KEY)
-    // To support database key, we should ideally pass it to getTranscriptAndTimestamps, but for now we'll set process.env temporarily or modify the function.
-    // Let's assume the service will check process.env, so let's inject it if missing
     const settings = await Settings.findOne();
-    if (settings && settings.groqKey && !process.env.GROQ_API_KEY) {
+    if (settings && settings.groqKey) {
       process.env.GROQ_API_KEY = settings.groqKey;
-    } else if (settings && settings.groqKey) {
-       // Override for this request (in production a better approach is passing it explicitly, but this works for local/single-tenant)
-       process.env.GROQ_API_KEY = settings.groqKey;
     }
 
-    const utterances = await getTranscriptAndTimestamps(req.file.path, assemblyAiKey, user.role === 'free');
+    const utterances = await getTranscriptAndTimestamps(audioFile.path, assemblyAiKey, user.role === 'free');
+
+    // Cleanup audio file (not needed anymore)
+    if (audioFile.path && fs.existsSync(audioFile.path)) {
+      try { fs.unlinkSync(audioFile.path); } catch (_) {}
+    }
 
     // Update limits on success
     let remainingLimit = 0;
@@ -307,29 +321,35 @@ app.post('/api/step1-extract', requireAuth, upload.single('audio'), async (req, 
       await user.save();
     } else if (user.role === 'premium') {
       user.videoLimit -= 1;
-      // Do not downgrade here, so they can finish step 2 and 3 of this video as premium
       remainingLimit = user.videoLimit;
       await user.save();
     } else {
-      remainingLimit = Infinity; // admin
+      remainingLimit = Infinity;
     }
 
-    const videoId = req.file.filename; // Keeping as ID for reference
+    // Return videoStorageKey so Step 4 can mux without re-upload
+    const videoStorageKey = videoFile.filename;
     
-    console.log(`[Step 1] Complete. Found ${utterances.length} utterances. Video ID: ${videoId}`);
+    console.log(`[Step 1] Complete. Found ${utterances.length} utterances. VideoKey: ${videoStorageKey}`);
     res.json({ 
       utterances,
-      videoId,
+      videoId: videoStorageKey,
+      videoStorageKey,
       remainingLimit,
       role: user.role,
       freeVideosUsed: user.freeVideosUsed,
       lastFreeVideoDate: user.lastFreeVideoDate
     });
   } catch (error) {
+    // Cleanup video on error
+    if (videoPath && fs.existsSync(videoPath)) {
+      try { fs.unlinkSync(videoPath); } catch (_) {}
+    }
     console.error('Step 1 Error:', error);
     res.status(500).json({ error: 'Extraction & Transcription failed', details: error.message });
   }
 });
+
 
 // Step 2: Translate English text to Burmese
 app.post('/api/step2-translate', requireAuth, async (req, res) => {
@@ -471,54 +491,49 @@ app.post('/api/tts-preview', requireAuth, async (req, res) => {
 
 
 // Step 4 (Server Render): Native FFmpeg Muxing
-app.post('/api/step4-render', requireAuth, videoUpload.single('video'), async (req, res) => {
-  let videoPath = null;
+// Uses videoStorageKey from Step 1 — no re-upload needed from client
+app.post('/api/step4-render', requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (user.role === 'restrict') return res.status(403).json({ error: 'Your account is restricted.' });
 
-    if (!req.file) return res.status(400).json({ error: 'No video file provided' });
-
-    const { audioFilename, videoSegmentsJson, videoDuration } = req.body;
+    const { audioFilename, videoStorageKey } = req.body;
     if (!audioFilename) return res.status(400).json({ error: 'audioFilename is required' });
+    if (!videoStorageKey) return res.status(400).json({ error: 'videoStorageKey is required' });
 
     const audioPath = path.join(__dirname, 'uploads', audioFilename);
+    const videoPath = path.join(__dirname, 'uploads', videoStorageKey);
+
     if (!fs.existsSync(audioPath)) {
       return res.status(404).json({ error: 'Audio file not found on server. Please re-process Step 3.' });
     }
-
-    videoPath = req.file.path;
-    let videoSegments = [];
-    try {
-      videoSegments = JSON.parse(videoSegmentsJson || '[]');
-    } catch (e) {
-      return res.status(400).json({ error: 'Invalid videoSegmentsJson' });
+    if (!fs.existsSync(videoPath)) {
+      return res.status(404).json({ error: 'Video file not found on server. Please re-upload your video.' });
     }
 
-    const dur = parseFloat(videoDuration) || 0;
-    console.log(`[Step 4 Server Render] User: ${user.email}, Video: ${req.file.originalname}, Segments: ${videoSegments.length}`);
+    console.log(`[Step 4] User: ${user.email}, VideoKey: ${videoStorageKey}, AudioFile: ${audioFilename}`);
 
     const outputDir = path.join(__dirname, 'uploads');
-    const outputPath = await renderVideo(videoPath, audioPath, videoSegments, dur, outputDir);
+    const outputPath = await renderVideo(videoPath, audioPath, [], 0, outputDir);
 
     const baseUrl = req.protocol + '://' + req.get('host');
     const outputUrl = `${baseUrl}/uploads/${path.basename(outputPath)}`;
 
-    console.log(`[Step 4 Server Render] Done! Output: ${outputUrl}`);
+    console.log(`[Step 4] Done! Output: ${outputUrl}`);
     
-    // Cleanup uploaded video (keep rendered output for download)
-    if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+    // Cleanup source video (keep audio and output for download)
+    if (fs.existsSync(videoPath)) {
+      try { fs.unlinkSync(videoPath); } catch (_) {}
+    }
 
     res.json({ url: outputUrl, filename: path.basename(outputPath) });
   } catch (error) {
-    console.error('[Step 4 Server Render] Error:', error);
-    if (videoPath && fs.existsSync(videoPath)) {
-      try { fs.unlinkSync(videoPath); } catch (_) {}
-    }
+    console.error('[Step 4] Error:', error);
     res.status(500).json({ error: 'Server rendering failed', details: error.message });
   }
 });
+
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {

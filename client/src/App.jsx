@@ -512,77 +512,90 @@ function App() {
     }
   };
 
+  // ─────────────────────────────────────────────────────────────────
+  // handleAutoProcess: Full Dubbing Pipeline
+  //   1. WASM: extract audio from video (client-side, fast demux)
+  //   2. Server Step 1: upload audio+video → transcribe → get videoStorageKey
+  //   3. Server Step 2: translate utterances
+  //   4. Server Step 3: TTS per utterance, mix audio (1.3x–1.6x speed)
+  //   5. Server Step 4: mux stored video + mixed audio → download URL
+  // ─────────────────────────────────────────────────────────────────
   const handleAutoProcess = async () => {
     if (!file) { setError('Please select a video file first.'); return; }
-    if (user?.role !== 'admin' && (user?.videoLimit === undefined || user?.videoLimit <= 0)) {
+    if (user?.role !== 'admin' && (user?.videoLimit === undefined || user?.videoLimit <= 0) && user?.role !== 'free') {
       setError('Video limit reached. You have 0 credits remaining.');
       return;
     }
-    setLoading(true); setFfmpegProgress(0); setError('');
-    setAutoStep(1); setAutoProgress(10); // Fetching step
+
+    setLoading(true);
+    setFfmpegProgress(0);
+    setError('');
+    setFinalVideoUrl('');
+    setAutoStep(1);
+    setAutoProgress(5);
+
+    const token = localStorage.getItem('token');
 
     try {
+      // ── Step A: Extract audio from video using WASM (client-side) ──
       const ffmpeg = ffmpegRef.current;
       await ffmpeg.writeFile('input_video.mp4', await fetchFile(file));
-      setAutoProgress(15);
+      setAutoProgress(12);
       await ffmpeg.exec(['-i', 'input_video.mp4', '-vn', '-c:a', 'libmp3lame', '-b:a', '128k', 'extracted_audio.mp3']);
       const audioData = await ffmpeg.readFile('extracted_audio.mp3');
-      const formData = new FormData();
-      formData.append('audio', new File([new Blob([audioData.buffer], { type: 'audio/mp3' })], 'extracted_audio.mp3', { type: 'audio/mp3' }));
-      if (assemblyAiKey) formData.append('assemblyAiKey', assemblyAiKey);
+      // Clean up WASM memory
+      await ffmpeg.deleteFile('input_video.mp4').catch(() => {});
+      await ffmpeg.deleteFile('extracted_audio.mp3').catch(() => {});
 
-      const token = localStorage.getItem('token');
+      // ── Step 1: Upload audio + video → transcribe → get videoStorageKey ──
+      setAutoStep(2); setAutoProgress(20);
+      const step1Form = new FormData();
+      step1Form.append('audio', new File([new Blob([audioData.buffer], { type: 'audio/mp3' })], 'extracted_audio.mp3', { type: 'audio/mp3' }));
+      step1Form.append('video', file);
+      if (assemblyAiKey) step1Form.append('assemblyAiKey', assemblyAiKey);
 
-      setAutoStep(2); setAutoProgress(25); // Transcribing step
+      const extractRes = await axios.post(`${apiUrl}/step1-extract`, step1Form, {
+        headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${token}` },
+        onUploadProgress: (e) => {
+          const pct = (e.loaded / (e.total || 1)) * 100;
+          setAutoProgress(20 + pct * 0.15); // 20–35%
+        }
+      });
 
-      const extractRes = await axios.post(`${apiUrl}/step1-extract`, formData, { headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${token}` } });
       if (extractRes.data.remainingLimit !== undefined && setUser) {
-        setUser({
-          ...user,
-          videoLimit: extractRes.data.remainingLimit,
-          freeVideosUsed: extractRes.data.freeVideosUsed !== undefined ? extractRes.data.freeVideosUsed : user.freeVideosUsed,
-          lastFreeVideoDate: extractRes.data.lastFreeVideoDate !== undefined ? extractRes.data.lastFreeVideoDate : user.lastFreeVideoDate
-        });
+        setUser({ ...user, videoLimit: extractRes.data.remainingLimit, freeVideosUsed: extractRes.data.freeVideosUsed ?? user.freeVideosUsed, lastFreeVideoDate: extractRes.data.lastFreeVideoDate ?? user.lastFreeVideoDate });
       }
+
       const extractedUtterances = extractRes.data.utterances;
+      const videoStorageKey = extractRes.data.videoStorageKey;
 
-      setAutoStep(3); setAutoProgress(45); // Translating step
+      if (!videoStorageKey) throw new Error('Server did not return videoStorageKey. Please contact support.');
 
+      // ── Step 2: Translate ──
+      setAutoStep(3); setAutoProgress(40);
       const translateRes = await axios.post(`${apiUrl}/step2-translate`, { utterances: extractedUtterances }, { headers: { Authorization: `Bearer ${token}` } });
       const translatedUtterances = translateRes.data.translatedUtterances;
 
-      setAutoStep(4); setAutoProgress(65); // Synthesizing step
-
+      // ── Step 3: TTS + Mix Audio (1.3x default, up to 1.6x, gaps = silence) ──
+      setAutoStep(4); setAutoProgress(58);
       const finalPitch = Number(selectedVoice.pitch.replace('Hz', '')) + pitchOffset;
       const voicePayload = {
         voice: selectedVoice.voice,
         rate: selectedVoice.rate,
         pitch: `${finalPitch > 0 ? '+' : ''}${finalPitch}Hz`
       };
-
       const ttsRes = await axios.post(`${apiUrl}/step3-tts`, { translatedUtterances, voice: voicePayload, videoDuration }, { headers: { Authorization: `Bearer ${token}` } });
       const audioUrl = ttsRes.data.url;
       const audioFilename = ttsRes.data.finalAudioFilename;
 
-      setAutoProgress(75);
+      if (!audioFilename) throw new Error('Server did not return audioFilename from Step 3.');
 
-      // ── Server-Side Render (faster) ──
-      setAutoStep(5); setAutoProgress(80);
-
-      const renderForm = new FormData();
-      renderForm.append('video', file);
-      renderForm.append('audioFilename', audioFilename);
-      renderForm.append('videoSegmentsJson', JSON.stringify(ttsRes.data.videoSegments || []));
-      renderForm.append('videoDuration', String(videoDuration));
-
-      const renderRes = await axios.post(`${apiUrl}/step4-render`, renderForm, {
-        headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${token}` },
-        onUploadProgress: (progressEvent) => {
-          const uploadPct = (progressEvent.loaded / (progressEvent.total || 1)) * 100;
-          // Upload is 80–90%, server processing is 90–100%
-          setAutoProgress(80 + uploadPct * 0.10);
-        }
-      });
+      // ── Step 4: Server mux video (muted) + dubbed audio ──
+      setAutoStep(5); setAutoProgress(75);
+      const renderRes = await axios.post(`${apiUrl}/step4-render`,
+        { audioFilename, videoStorageKey },
+        { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } }
+      );
 
       setAutoProgress(100);
       setAutoStep(6);
@@ -592,20 +605,16 @@ function App() {
       setVideoSegments(ttsRes.data.videoSegments || []);
       setFinalVideoUrl(renderRes.data.url);
       setLoading(false);
-      return;
-
-
-
-      setLoading(false);
 
     } catch (err) {
-      console.error(err);
+      console.error('[handleAutoProcess]', err);
       setError(err.response?.data?.details || err.response?.data?.error || err.message || 'Auto Process failed.');
       setLoading(false);
       setAutoStep(0);
       setAutoProgress(0);
     }
   };
+
 
   const handleCancelAutoProcess = () => {
     if (ffmpegRef.current) {
@@ -1251,7 +1260,7 @@ ${textArray}`;
             )}
           </div>
         </div>
-        <AutoLoadingOverlay step={autoStep} progress={autoProgress} onCancel={handleCancelAutoProcess} isServerRender={user?.role === 'premium' || user?.role === 'admin'} />
+        <AutoLoadingOverlay step={autoStep} progress={autoProgress} onCancel={handleCancelAutoProcess} isServerRender={true} />
         <UserProfileDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} user={user} logout={logout} packages={pricingPackages} />
       </div>
     );
