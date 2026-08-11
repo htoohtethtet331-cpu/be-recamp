@@ -430,6 +430,86 @@ app.post('/api/step3-tts', requireAuth, async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AI Recap SRT Generator: User's Groq key → Whisper → 0.5s chunk SRT
+//   • Uses user's own Groq API key (sent per-request, not stored on server)
+//   • Word-level timestamps → grouped into 0.5s windows → SRT string
+//   • Does NOT affect any existing routes
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/api/recap-srt', requireAuth, upload.single('audio'), async (req, res) => {
+  const audioPath = req.file?.path;
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.role === 'restrict') return res.status(403).json({ error: 'Account restricted.' });
+    if (user.role === 'free') return res.status(403).json({ error: 'Free users cannot use AI Recap SRT. Please upgrade to Premium.' });
+
+    const { groqKey } = req.body;
+    if (!groqKey || groqKey.trim() === '') {
+      if (audioPath) fs.unlink(audioPath, () => {});
+      return res.status(400).json({ error: 'Groq API Key is required.' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'Audio file is required.' });
+    }
+
+    const Groq = require('groq-sdk');
+    const groq = new Groq({ apiKey: groqKey.trim() });
+
+    console.log(`[Recap SRT] Transcribing with Groq whisper-large-v3...`);
+    const transcript = await groq.audio.transcriptions.create({
+      file: fs.createReadStream(audioPath),
+      model: 'whisper-large-v3',
+      response_format: 'verbose_json',
+      timestamp_granularities: ['word']
+    });
+
+    fs.unlink(audioPath, () => {}); // cleanup uploaded audio
+
+    const words = transcript.words || [];
+    if (words.length === 0) {
+      return res.status(400).json({ error: 'No speech detected in the audio.' });
+    }
+
+    // ── Build 0.5s chunk SRT ──
+    const CHUNK = 0.5;
+    const srtTime = (sec) => {
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = Math.floor(sec % 60);
+      const ms = Math.round((sec % 1) * 1000);
+      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')},${String(ms).padStart(3,'0')}`;
+    };
+
+    const buckets = {};
+    for (const w of words) {
+      const wordStart = typeof w.start === 'number' ? w.start : 0;
+      const ci = Math.floor(wordStart / CHUNK);
+      if (!buckets[ci]) buckets[ci] = { start: ci * CHUNK, end: (ci + 1) * CHUNK, words: [] };
+      buckets[ci].words.push((w.word || '').trim());
+    }
+
+    const sortedKeys = Object.keys(buckets).map(Number).sort((a, b) => a - b);
+    let srt = '';
+    let idx = 1;
+    for (const key of sortedKeys) {
+      const { start, end, words: chunkWords } = buckets[key];
+      const text = chunkWords.filter(Boolean).join(' ').trim();
+      if (!text) continue;
+      srt += `${idx}\n${srtTime(start)} --> ${srtTime(end)}\n${text}\n\n`;
+      idx++;
+    }
+
+    console.log(`[Recap SRT] Done. ${idx - 1} entries from ${words.length} words.`);
+    res.json({ srt, wordCount: words.length, entryCount: idx - 1 });
+
+  } catch (error) {
+    console.error('[Recap SRT Error]', error);
+    if (audioPath) fs.unlink(audioPath, () => {});
+    res.status(500).json({ error: 'SRT generation failed', details: error.message });
+  }
+});
+
 app.post('/api/tts-preview', requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
