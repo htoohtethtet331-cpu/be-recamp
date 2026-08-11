@@ -205,7 +205,10 @@ const VoiceSelector = ({ selectedVoice, setSelectedVoice, pitchOffset, setPitchO
         pitch: `${finalPitch > 0 ? '+' : ''}${finalPitch}Hz`
       };
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+      // Use same logic as main App: PROD uses domain, DEV uses localhost
+      const apiUrl = import.meta.env.PROD
+        ? (import.meta.env.VITE_API_URL || 'https://deeplearnaixrecapstudio.app/api')
+        : `http://${window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname}:5001/api`;
       const token = localStorage.getItem('token');
       const res = await axios.post(`${apiUrl}/tts-preview`, {
         voice: voicePayload,

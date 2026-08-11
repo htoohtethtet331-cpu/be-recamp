@@ -54,8 +54,8 @@ const mixAudioOnly = async (utterances, outputDir, videoDuration) => {
     const audioDur = await getAudioDuration(u.audioFilePath);
     const span = (u.end - u.start) / 1000;
 
-    // Speedup logic: default 1.3x, max 1.6x
-    const speedup = Math.max(1.3, Math.min(audioDur / span, 1.6));
+    // Speedup logic: default 1.2x (matches TTS base rate), max 1.6x
+    const speedup = Math.max(1.2, Math.min(audioDur / span, 1.6));
     const newDur = audioDur / speedup;
 
     const startMs = Math.round(u.start);
@@ -79,7 +79,11 @@ const mixAudioOnly = async (utterances, outputDir, videoDuration) => {
     });
   }
 
+  const successCount = utterances.filter(u => u.audioFilePath && fs.existsSync(u.audioFilePath)).length;
+  console.log(`[mixAudioOnly] ${successCount}/${utterances.length} TTS clips ready for mixing.`);
+
   if (inputArgs.length === 0) {
+    console.warn('[mixAudioOnly] WARNING: No valid audio clips found! Returning 1-second silence. Check if Edge TTS is failing for all utterances.');
     // Pure silence if no utterances
     await runFfmpeg([
       '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo', '-t', '1', '-y', finalAudioPath

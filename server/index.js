@@ -428,9 +428,11 @@ app.post('/api/tts-preview', requireAuth, async (req, res) => {
     if (!pitch.endsWith('Hz')) {
       pitch = pitch + 'Hz';
     }
+    const presetRate = parseInt(((typeof voice === 'object' && voice.rate) || '+0%').replace('%', '')) || 0;
+    const previewRate = `${20 + presetRate >= 0 ? '+' : ''}${20 + presetRate}%`;
     const synthOpts = {
       voice: typeof voice === 'string' ? voice : (voice.voice || 'my-MM-NilarNeural'),
-      rate: '+30%',   // CLAUDE.md hard rule: always +30%
+      rate: previewRate,  // 1.2x base + voice preset offset
       pitch: pitch,
       volume: '+0%'
     };
