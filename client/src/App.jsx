@@ -202,7 +202,7 @@ const VoiceSelector = ({ selectedVoice, setSelectedVoice, pitchOffset, setPitchO
       const voicePayload = {
         voice: selectedVoice.voice,
         rate: selectedVoice.rate,
-        pitch: `${finalPitch > 0 ? '+' : ''}${finalPitch}Hz`
+        pitch: `${finalPitch >= 0 ? '+' : ''}${finalPitch}Hz`
       };
 
       // Use same logic as main App: PROD uses domain, DEV uses localhost
@@ -571,7 +571,7 @@ function App() {
       const voicePayload = {
         voice: selectedVoice.voice,
         rate: selectedVoice.rate,
-        pitch: `${finalPitch > 0 ? '+' : ''}${finalPitch}Hz`
+        pitch: `${finalPitch >= 0 ? '+' : ''}${finalPitch}Hz`
       };
       const ttsRes = await axios.post(`${apiUrl}/step3-tts`, { translatedUtterances, voice: voicePayload, videoDuration }, { headers: { Authorization: `Bearer ${token}` } });
       const audioUrl = ttsRes.data.url;
@@ -1058,7 +1058,7 @@ ${textArray}`;
       const voicePayload = {
         voice: selectedVoice.voice,
         rate: selectedVoice.rate,
-        pitch: `${finalPitch > 0 ? '+' : ''}${finalPitch}Hz`
+        pitch: `${finalPitch >= 0 ? '+' : ''}${finalPitch}Hz`
       };
 
       const token = localStorage.getItem('token');
