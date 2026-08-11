@@ -314,7 +314,7 @@ app.post('/api/step2-translate', requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    if (user.role === 'restrict') return res.status(403).json({ error: 'သင့်အကောင့်ကို ပိတ်ပင်ထားပါသည်။ (Your account has been restricted.)' });
+    if (user.role === 'restrict') return res.status(403).json({ error: 'သင့်အကောင့်ကို ပိတ်ပင်ထားပါသည်။' });
 
     const { utterances } = req.body;
     if (!utterances || !Array.isArray(utterances)) {
@@ -324,41 +324,37 @@ app.post('/api/step2-translate', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Too many utterances. Maximum allowed is 500.' });
     }
 
-    let apiKey = req.body.apiKey;
-    
-    if (user.role === 'free' && (!apiKey || apiKey.trim() === '')) {
-      return res.status(403).json({ error: 'Free users must provide their own API key. Access to Admin API Key is forbidden.' });
+    // ⚠️ Translation ALWAYS uses Admin's Gemini API Key only.
+    // Free users cannot use admin key at all.
+    // Groq is NEVER used for translation.
+    if (user.role === 'free') {
+      return res.status(403).json({ error: 'Free users cannot use the translation feature. Please upgrade to Premium.' });
     }
 
-    let groqKeys = [];
-    if (!apiKey || apiKey.trim() === '') {
-      const settings = await Settings.findOne();
-      if (settings) {
-        apiKey = settings.geminiKey;
-        groqKeys = settings.groqKeys || [];
-      }
-    } else {
-      // Even if user provides a gemini key, still fetch groqKeys for translation
-      const settings = await Settings.findOne();
-      if (settings) {
-        groqKeys = settings.groqKeys || [];
-      }
+    const settings = await Settings.findOne();
+    const geminiKey = settings?.geminiKey;
+
+    if (!geminiKey || geminiKey.trim() === '') {
+      return res.status(400).json({ 
+        error: 'Admin မှ Gemini API Key သတ်မှတ်မထားသေးပါ။ Admin Dashboard တွင် Gemini Key ထည့်သွင်းပေးပါ။' 
+      });
     }
 
-    if (!apiKey) {
-      return res.status(400).json({ error: 'Gemini API Key is required (provide in request or save in Admin Dashboard)' });
-    }
-    
-    console.log(`[Step 2] Received ${utterances.length} utterances for translation. Primary Groq Keys: ${groqKeys.filter(k => k).length}, Fallback Gemini Key starting with: ${apiKey.substring(0, 10)}...`);
-    const translatedUtterances = await translateUtterances(utterances, apiKey, groqKeys);
-    
+    console.log(`[Step 2] Received ${utterances.length} utterances. Translating with Gemini key: ${geminiKey.substring(0, 10)}...`);
+    const translatedUtterances = await translateUtterances(utterances, geminiKey);
+
     console.log(`[Step 2] Translation complete.`);
     res.json({ translatedUtterances });
   } catch (error) {
     console.error('Step 2 Error:', error);
-    res.status(500).json({ error: 'Translation failed', details: error.message });
+    // Return the exact Gemini error message so user can see what went wrong
+    res.status(500).json({ 
+      error: 'Translation failed', 
+      details: error.message 
+    });
   }
 });
+
 
 // Step 3: Generate TTS and Mix Audio
 app.post('/api/step3-tts', requireAuth, async (req, res) => {

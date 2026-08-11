@@ -1226,37 +1226,71 @@ ${textArray}`;
                 <UploadCloud className="w-8 h-8 text-purple-400 mx-auto mb-3 group-hover:scale-110 transition-transform" />
                 <span className="text-purple-300 font-bold text-base pointer-events-none">နှိပ်၍ File ရွေးချယ်ပါ</span>
               </label>
-            ) : finalVideoUrl ? (
-              <div className="space-y-4 mt-4">
-                <div className="w-full bg-black/50 rounded-2xl overflow-hidden shadow-inner border border-white/10">
-                  <video src={finalVideoUrl} controls className="w-full max-h-72 object-contain bg-black" />
+            ) : (downloadUrl || finalVideoUrl) ? (
+              /* ── Auto Mode Result ── */
+              <div className="space-y-4 mt-4 text-left">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                  <span className="text-green-400 text-sm font-bold">✅ Dubbing Complete!</span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <a
-                    href={finalVideoUrl}
-                    download="auto_translated_video.mp4"
-                    className="w-full py-3.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/30 hover:scale-[1.02]"
-                  >
-                    <Download className="w-5 h-5" />
-                    Download Video
-                  </a>
+                {/* Audio Preview */}
+                {downloadUrl && (
+                  <div className="bg-white/10 rounded-2xl p-4 border border-white/10">
+                    <p className="text-xs text-white/50 mb-2 font-medium uppercase tracking-wider">🎧 Dubbed Audio</p>
+                    <audio controls src={downloadUrl} className="w-full" style={{ accentColor: '#a855f7' }} />
+                  </div>
+                )}
 
-                  <button
-                    onClick={handleDownloadSRT}
-                    className="w-full py-3.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/30 hover:scale-[1.02]"
-                  >
-                    <Download className="w-5 h-5" />
-                    Download Subtitles (.srt)
+                {/* Merge with Video */}
+                {!mergedVideoUrl && file && downloadUrl && (
+                  <div className="bg-white/5 rounded-2xl p-4 border border-white/10 space-y-3">
+                    <p className="text-xs text-white/60 font-medium uppercase tracking-wider">🎬 မူရင်း Video နဲ့ ပေါင်းစပ်မည်</p>
+                    {merging && (
+                      <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500 rounded-full" style={{ width: `${mergeProgress}%` }} />
+                      </div>
+                    )}
+                    <button
+                      onClick={handleMergeVideo}
+                      disabled={merging}
+                      className={`w-full py-3.5 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 ${
+                        merging ? 'bg-white/10 text-white/50' : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg'
+                      }`}
+                    >
+                      {merging ? <><Loader2 className="w-5 h-5 animate-spin" /> Merging... {Math.round(mergeProgress)}%</> : <><Film className="w-5 h-5" /> Video + Audio ပေါင်းစပ်မည်</>}
+                    </button>
+                  </div>
+                )}
+
+                {/* Merged Video Result */}
+                {mergedVideoUrl && (
+                  <div className="bg-white/5 rounded-2xl p-3 border border-green-500/20 space-y-3">
+                    <p className="text-xs text-green-400 font-bold uppercase">✅ Dubbed Video Ready!</p>
+                    <video controls src={mergedVideoUrl} className="w-full rounded-xl" style={{ maxHeight: '240px', background: '#000' }} playsInline />
+                    <a href={mergedVideoUrl} download="dubbed_video.mp4" className="w-full py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg">
+                      <Download className="w-5 h-5" /> Download Dubbed Video (.mp4)
+                    </a>
+                  </div>
+                )}
+
+                {/* Download Buttons */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {downloadUrl && (
+                    <a href={downloadUrl} download="dubbed_audio.mp3" className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg">
+                      <Download className="w-4 h-4" /> Download Audio (.mp3)
+                    </a>
+                  )}
+                  <button onClick={handleDownloadSRT} className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white border border-white/10">
+                    <Download className="w-4 h-4" /> Download Subtitles (.srt)
                   </button>
                 </div>
 
                 <button
-                  onClick={() => { setFile(null); setFinalVideoUrl(''); setIsPreviewMode(false); }}
+                  onClick={() => { setFile(null); setFinalVideoUrl(''); setDownloadUrl(''); setMergedVideoUrl(''); setMergeProgress(0); }}
                   className="w-full py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white border border-white/10"
                 >
-                  <RefreshCw className="w-5 h-5" />
-                  Translate Another Video
+                  <RefreshCw className="w-5 h-5" /> Translate Another Video
                 </button>
               </div>
             ) : (
@@ -1296,6 +1330,7 @@ ${textArray}`;
                 </button>
               </div>
             )}
+
           </div>
         </div>
         <AutoLoadingOverlay step={autoStep} progress={autoProgress} onCancel={handleCancelAutoProcess} />

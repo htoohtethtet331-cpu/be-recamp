@@ -1,18 +1,7 @@
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const Groq = require('groq-sdk');
 
-async function callGroqTranslation(apiKey, prompt) {
-  const groq = new Groq({ apiKey });
-  const response = await groq.chat.completions.create({
-    messages: [
-      { role: 'user', content: prompt }
-    ],
-    model: 'llama-3.3-70b-versatile',
-    temperature: 0.1,
-    response_format: { type: 'json_object' }
-  });
-  return response.choices[0].message.content;
-}
+// ⚠️ Groq is FORBIDDEN for translation. Translation ONLY uses Gemini API key.
+// Groq is only used for transcription (Step 1) for premium users with <25MB files.
 
 // Retry on 429/503 with backoff. 403 = fatal, stop immediately.
 // CLAUDE.md: "back off 3s, 10s, 25s ... translation that fails is fatal, not skippable"
@@ -123,9 +112,13 @@ async function callGeminiWithRetry(apiKey, prompt, retries = 3) {
   }
 }
 
-const translateUtterances = async (utterances, geminiKey, groqKeys = []) => {
+// translateUtterances — Gemini ONLY (AIza* = native Google, other = OpenRouter)
+// ⚠️ groqKeys param is IGNORED — Groq is forbidden for translation.
+const translateUtterances = async (utterances, geminiKey) => {
   if (!utterances || utterances.length === 0) return [];
-  if (!geminiKey) throw new Error('Gemini API Key is required as a fallback.');
+  if (!geminiKey || geminiKey.trim() === '') {
+    throw new Error('Gemini API Key မပေးမိသေးပါ။ Admin Panel မှ Gemini API Key ထည့်သွင်းပေးပါ။');
+  }
 
   // Reduced from 35 to 15 to prevent exceeding 1500 max_tokens limit
   const BATCH_SIZE = 15;
@@ -135,19 +128,12 @@ const translateUtterances = async (utterances, geminiKey, groqKeys = []) => {
   for (let i = 0; i < utterances.length; i += BATCH_SIZE) {
     const batch = utterances.slice(i, i + BATCH_SIZE);
 
-    // CLAUDE.md Step 5: "Pass each block's dialogue/narration tag and speaker id,
-    //   and the previous block's Burmese translation as context so it flows.
-    //   Character budget: ~16 chars per second of the block's scene duration"
     const textArray = batch.map((u, idx) => {
       const durSec = Math.max((u.end - u.start) / 1000, 0.5);
       const charBudget = Math.round(durSec * 16);
       return `ID: ${i + idx} | Speaker: ${u.speaker || 'A'} | Type: ${u.tag || 'narration'} | Scene: ${durSec.toFixed(1)}s | Budget: ~${charBudget} chars | Text: "${u.text}"`;
     }).join('\n');
 
-    // CLAUDE.md: "TRANSLATE WHAT'S ACTUALLY SAID, NOT A THIRD-PERSON RECAP SUMMARY.
-    //   Keep whatever person/perspective the source uses."
-    // CLAUDE.md: "Do not tell Gemini to write 'the way a recap narrator would tell the story'"
-    // Use __PLACEHOLDER__ instead of % to avoid CLAUDE.md bug #2
     const prompt = `You are a professional video dubbing translator for a TikTok recap video.
 
 TASK: Translate each block into natural spoken Burmese (Myanmar script ONLY — no English, no romanization).
@@ -173,34 +159,15 @@ __TRANSCRIPT__`;
         : '')
       .replace('__TRANSCRIPT__', textArray);
 
+    // Translation: Gemini ONLY
     let content;
-    let translationSuccess = false;
-
-    // Try Groq first with round-robin fallback
-    const validGroqKeys = groqKeys.filter(k => k && k.trim() !== '');
-    for (let g = 0; g < validGroqKeys.length; g++) {
-      try {
-        console.log(`[Groq] Attempting translation with Groq Key ${g + 1}/${validGroqKeys.length}...`);
-        content = await callGroqTranslation(validGroqKeys[g], finalPrompt);
-        translationSuccess = true;
-        break; // Success, break out of Groq keys loop
-      } catch (err) {
-        console.warn(`[Groq] Key ${g + 1} failed: ${err.message}. Trying next key if available...`);
-      }
-    }
-
-    // Fallback to Gemini if Groq failed or no Groq keys provided
-    if (!translationSuccess) {
-      if (validGroqKeys.length > 0) {
-        console.warn(`[Groq] All ${validGroqKeys.length} Groq keys failed. Falling back to Gemini...`);
-      }
-      try {
-        content = await callGeminiWithRetry(geminiKey, finalPrompt);
-      } catch (err) {
-        // CLAUDE.md: "a translation request that still fails after retries is fatal, not skippable"
-        console.error(`[Gemini] FATAL — batch at index ${i} failed:`, err.message);
-        throw err; // do NOT fallback to original text
-      }
+    try {
+      console.log(`[Gemini] Translating batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(utterances.length / BATCH_SIZE)}...`);
+      content = await callGeminiWithRetry(geminiKey.trim(), finalPrompt);
+    } catch (err) {
+      // Propagate error with clear message for user
+      console.error(`[Gemini] FATAL — translation batch ${Math.floor(i / BATCH_SIZE) + 1} failed:`, err.message);
+      throw new Error(`Translation failed: ${err.message}`);
     }
 
     let parsed;
