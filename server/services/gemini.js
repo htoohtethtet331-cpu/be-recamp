@@ -10,41 +10,60 @@ async function callGeminiWithRetry(apiKey, prompt, retries = 3) {
   const cleanKey = apiKey.trim();
 
   for (let attempt = 0; attempt <= retries; attempt++) {
-    let response;
+    // Abort after 45s to prevent server hang / OOM on slow API responses
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
 
-    if (cleanKey.startsWith('AIza')) {
-      // Native Google Gemini API
-      response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${cleanKey}`,
-        {
+    let response;
+    try {
+      if (cleanKey.startsWith('AIza')) {
+        // Native Google Gemini API
+        response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${cleanKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: {
+                temperature: 0.1,
+                responseMimeType: 'application/json',
+                maxOutputTokens: 4096,
+              },
+            }),
+          }
+        );
+      } else {
+        // OpenRouter
+        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            Authorization: `Bearer ${cleanKey}`,
+            'Content-Type': 'application/json',
+          },
+          signal: controller.signal,
           body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              temperature: 0.1,
-              responseMimeType: 'application/json',
-              maxOutputTokens: 4096,  // increased from 2500 to prevent truncation
-            },
+            model: 'google/gemini-2.5-flash',
+            temperature: 0.1,
+            max_tokens: 4000,
+            messages: [{ role: 'user', content: prompt }],
           }),
+        });
+      }
+    } catch (fetchErr) {
+      clearTimeout(timeoutId);
+      if (fetchErr.name === 'AbortError') {
+        if (attempt < retries) {
+          console.warn(`[Gemini] Fetch timed out (45s). Retrying attempt ${attempt + 1}/${retries}...`);
+          await sleep(3000);
+          continue;
         }
-      );
-    } else {
-      // OpenRouter
-      response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${cleanKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
-          temperature: 0.1,
-          max_tokens: 4000,  // increased from 1500 — Burmese text uses more tokens than English
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      });
+        throw new Error('Gemini API timed out after 45s on all retries. Please try again.');
+      }
+      throw fetchErr;
     }
+    clearTimeout(timeoutId);
 
     // CLAUDE.md: "403 PERMISSION_DENIED — stop immediately, never retry"
     if (response.status === 403) {
