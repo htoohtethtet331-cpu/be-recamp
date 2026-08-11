@@ -9,7 +9,7 @@ const path = require('path');
 const { getTranscriptAndTimestamps } = require('./services/assemblyai');
 const { translateUtterances } = require('./services/gemini');
 const { generateTTSForUtterances, synth } = require('./services/tts');
-const { mixAudioOnly, renderVideo } = require('./services/ffmpeg');
+const { mixAudioOnly } = require('./services/ffmpeg');
 const connectDB = require('./config/db');
 const Settings = require('./models/Settings');
 const { OAuth2Client } = require('google-auth-library');
@@ -245,26 +245,6 @@ app.put('/api/admin/users/:id/limit', requireAdmin, async (req, res) => {
 
 // --- Main App Endpoints ---
 
-// Pre-Step: Store original video on server, return videoStorageKey
-// Called BEFORE WASM extraction so File object is fresh and unmodified
-app.post('/api/upload-video', requireAuth, videoUpload.single('video'), async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    if (user.role === 'restrict') return res.status(403).json({ error: 'Your account is restricted.' });
-    if (!req.file) return res.status(400).json({ error: 'No video file provided' });
-
-    const videoStorageKey = req.file.filename;
-    console.log(`[Upload Video] Stored: ${videoStorageKey} (${Math.round(req.file.size / 1024 / 1024)}MB)`);
-    res.json({ videoStorageKey });
-  } catch (error) {
-    console.error('[Upload Video] Error:', error);
-    if (req.file?.path && fs.existsSync(req.file.path)) {
-      try { fs.unlinkSync(req.file.path); } catch (_) {}
-    }
-    res.status(500).json({ error: 'Video upload failed', details: error.message });
-  }
-});
 
 // Step 1: Extract Audio and Transcribe (audio only)
 app.post('/api/step1-extract', requireAuth, upload.single('audio'), async (req, res) => {
@@ -467,52 +447,6 @@ app.post('/api/tts-preview', requireAuth, async (req, res) => {
   }
 });
 
-
-// Step 4 (Server Render): Native FFmpeg Muxing
-// Uses videoStorageKey from Step 1 — no re-upload needed from client
-app.post('/api/step4-render', requireAuth, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    if (user.role === 'restrict') return res.status(403).json({ error: 'Your account is restricted.' });
-
-    // Read from query params (proxy-safe) OR body as fallback
-    const audioFilename = req.query.audioFilename || req.body?.audioFilename;
-    const videoStorageKey = req.query.videoStorageKey || req.body?.videoStorageKey;
-    if (!audioFilename) return res.status(400).json({ error: 'audioFilename is required' });
-    if (!videoStorageKey) return res.status(400).json({ error: 'videoStorageKey is required' });
-
-    const audioPath = path.join(__dirname, 'uploads', audioFilename);
-    const videoPath = path.join(__dirname, 'uploads', videoStorageKey);
-
-    if (!fs.existsSync(audioPath)) {
-      return res.status(404).json({ error: 'Audio file not found on server. Please re-process Step 3.' });
-    }
-    if (!fs.existsSync(videoPath)) {
-      return res.status(404).json({ error: 'Video file not found on server. Please re-upload your video.' });
-    }
-
-    console.log(`[Step 4] User: ${user.email}, VideoKey: ${videoStorageKey}, AudioFile: ${audioFilename}`);
-
-    const outputDir = path.join(__dirname, 'uploads');
-    const outputPath = await renderVideo(videoPath, audioPath, [], 0, outputDir);
-
-    const baseUrl = req.protocol + '://' + req.get('host');
-    const outputUrl = `${baseUrl}/uploads/${path.basename(outputPath)}`;
-
-    console.log(`[Step 4] Done! Output: ${outputUrl}`);
-    
-    // Cleanup source video (keep audio and output for download)
-    if (fs.existsSync(videoPath)) {
-      try { fs.unlinkSync(videoPath); } catch (_) {}
-    }
-
-    res.json({ url: outputUrl, filename: path.basename(outputPath) });
-  } catch (error) {
-    console.error('[Step 4] Error:', error);
-    res.status(500).json({ error: 'Server rendering failed', details: error.message });
-  }
-});
 
 
 // Serve static assets in production

@@ -101,24 +101,4 @@ const mixAudioOnly = async (utterances, outputDir, videoDuration) => {
   return { finalAudioPath, completeVideoSegments: [], updatedUtterances };
 };
 
-
-// ── Server-Side Video Renderer ──────────────────────────────────────────────────
-// Premium/Admin only. Takes the original video path, the final mixed audio path,
-// and the videoSegments array from Step 3 to produce the final retimed video.
-const renderVideo = async (videoPath, audioPath, videoSegments, videoDuration, outputDir) => {
-  const outputPath = path.join(outputDir, `render_${Date.now()}.mp4`);
-
-  // Simple mux: keep original video, drop original audio, add new audio track. No re-encoding video.
-  await runFfmpeg([
-    '-i', videoPath,
-    '-i', audioPath,
-    '-c:v', 'copy',
-    '-map', '0:v:0',
-    '-map', '1:a:0',
-    '-y', outputPath
-  ]);
-
-  return outputPath;
-};
-
-module.exports = { mixAudioOnly, renderVideo };
+module.exports = { mixAudioOnly };

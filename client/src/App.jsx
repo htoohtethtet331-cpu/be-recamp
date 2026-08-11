@@ -26,13 +26,12 @@ export const getLimitDisplay = (user) => {
   return `| Limit: ${user?.videoLimit || 0}`;
 };
 
-const AutoLoadingOverlay = ({ step, progress, onCancel, isServerRender }) => {
+const AutoLoadingOverlay = ({ step, progress, onCancel }) => {
   const steps = [
-    'Fetching',
+    'Extracting Audio',
     'Transcribing',
     'Translating',
-    'Synthesizing',
-    isServerRender ? '🚀 Server Rendering' : 'Rendering'
+    'Synthesizing Audio',
   ];
 
   // Calculate stroke dashoffset for circular progress
@@ -40,7 +39,7 @@ const AutoLoadingOverlay = ({ step, progress, onCancel, isServerRender }) => {
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
 
-  if (step === 0 || step === 6) return null;
+  if (step === 0 || step === 5) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/95 backdrop-blur-md">
@@ -513,13 +512,11 @@ function App() {
   };
 
   // ─────────────────────────────────────────────────────────────────
-  // handleAutoProcess: Full Dubbing Pipeline
-  //   0. Upload video to server first → get videoStorageKey
+  // handleAutoProcess: Dubbing Pipeline (ends at MP3 output)
   //   1. WASM: extract audio from video (client-side demux)
-  //   2. Server Step 1: upload audio only → transcribe
+  //   2. Server Step 1: upload audio → transcribe
   //   3. Server Step 2: translate utterances
-  //   4. Server Step 3: TTS per utterance, mix audio (1.3x–1.6x)
-  //   5. Server Step 4: mux stored video + mixed audio → download URL
+  //   4. Server Step 3: TTS per utterance, mix audio → MP3 download
   // ─────────────────────────────────────────────────────────────────
   const handleAutoProcess = async () => {
     if (!file) { setError('Please select a video file first.'); return; }
@@ -529,39 +526,22 @@ function App() {
     setError('');
     setFinalVideoUrl('');
     setAutoStep(1);
-    setAutoProgress(3);
+    setAutoProgress(5);
 
     const token = localStorage.getItem('token');
 
     try {
-      // ── Step 0: Upload original video to server FIRST (before WASM) ──
-      // Reason: After WASM runs, the File object may be in a modified state.
-      // Uploading first ensures the server receives the clean original file.
-      setAutoProgress(5);
-      const videoForm = new FormData();
-      videoForm.append('video', file);
-      const uploadRes = await axios.post(`${apiUrl}/upload-video`, videoForm, {
-        headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${token}` },
-        onUploadProgress: (e) => {
-          const pct = (e.loaded / (e.total || 1)) * 100;
-          setAutoProgress(5 + pct * 0.20); // 5–25%
-        }
-      });
-      const videoStorageKey = uploadRes.data.videoStorageKey;
-      if (!videoStorageKey) throw new Error('Server did not return videoStorageKey.');
-
-      // ── Step A: Extract audio from video using WASM (client-side) ──
-      setAutoStep(2); setAutoProgress(27);
+      // ── Step 1: Extract audio from video using WASM (client-side) ──
       const ffmpeg = ffmpegRef.current;
       await ffmpeg.writeFile('input_video.mp4', await fetchFile(file));
-      setAutoProgress(30);
+      setAutoProgress(15);
       await ffmpeg.exec(['-i', 'input_video.mp4', '-vn', '-c:a', 'libmp3lame', '-b:a', '128k', 'extracted_audio.mp3']);
       const audioData = await ffmpeg.readFile('extracted_audio.mp3');
       await ffmpeg.deleteFile('input_video.mp4').catch(() => {});
       await ffmpeg.deleteFile('extracted_audio.mp3').catch(() => {});
 
-      // ── Step 1: Upload audio → transcribe ──
-      setAutoProgress(38);
+      // ── Step 2: Upload audio → transcribe ──
+      setAutoStep(2); setAutoProgress(28);
       const step1Form = new FormData();
       step1Form.append('audio', new File([new Blob([audioData.buffer], { type: 'audio/mp3' })], 'extracted_audio.mp3', { type: 'audio/mp3' }));
       if (assemblyAiKey) step1Form.append('assemblyAiKey', assemblyAiKey);
@@ -574,13 +554,13 @@ function App() {
       }
       const extractedUtterances = extractRes.data.utterances;
 
-      // ── Step 2: Translate ──
-      setAutoStep(3); setAutoProgress(48);
+      // ── Step 3: Translate ──
+      setAutoStep(3); setAutoProgress(50);
       const translateRes = await axios.post(`${apiUrl}/step2-translate`, { utterances: extractedUtterances }, { headers: { Authorization: `Bearer ${token}` } });
       const translatedUtterances = translateRes.data.translatedUtterances;
 
-      // ── Step 3: TTS + Mix Audio (1.3x default, up to 1.6x max, silent gaps = no audio) ──
-      setAutoStep(4); setAutoProgress(62);
+      // ── Step 4: TTS + Mix Audio (1.3x default, up to 1.6x max, silent gaps = no audio) ──
+      setAutoStep(4); setAutoProgress(68);
       const finalPitch = Number(selectedVoice.pitch.replace('Hz', '')) + pitchOffset;
       const voicePayload = {
         voice: selectedVoice.voice,
@@ -589,24 +569,14 @@ function App() {
       };
       const ttsRes = await axios.post(`${apiUrl}/step3-tts`, { translatedUtterances, voice: voicePayload, videoDuration }, { headers: { Authorization: `Bearer ${token}` } });
       const audioUrl = ttsRes.data.url;
-      const audioFilename = ttsRes.data.finalAudioFilename;
-      if (!audioFilename) throw new Error('Server did not return audioFilename from Step 3.');
 
-      // ── Step 4: Server mux (video muted + dubbed audio) ──
-      // Send as URL query params — proxy-safe, no body parsing needed on server
-      setAutoStep(5); setAutoProgress(82);
-      const renderRes = await axios.post(
-        `${apiUrl}/step4-render?audioFilename=${encodeURIComponent(audioFilename)}&videoStorageKey=${encodeURIComponent(videoStorageKey)}`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
+      // ── Done: MP3 ready for download ──
       setAutoProgress(100);
-      setAutoStep(6);
+      setAutoStep(5);
       setUtterances(ttsRes.data.updatedUtterances || ttsRes.data.utterances || []);
       setPreviewAudioUrl(audioUrl);
-      setVideoSegments(ttsRes.data.videoSegments || []);
-      setFinalVideoUrl(renderRes.data.url);
+      setDownloadUrl(audioUrl);
+      setVideoSegments([]);
       setLoading(false);
 
     } catch (err) {
@@ -617,6 +587,7 @@ function App() {
       setAutoProgress(0);
     }
   };
+
 
 
   const handleCancelAutoProcess = () => {
@@ -1263,7 +1234,7 @@ ${textArray}`;
             )}
           </div>
         </div>
-        <AutoLoadingOverlay step={autoStep} progress={autoProgress} onCancel={handleCancelAutoProcess} isServerRender={true} />
+        <AutoLoadingOverlay step={autoStep} progress={autoProgress} onCancel={handleCancelAutoProcess} />
         <UserProfileDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} user={user} logout={logout} packages={pricingPackages} />
       </div>
     );
@@ -1635,27 +1606,22 @@ ${textArray}`;
                       <Download className="w-4 h-4" /> Download Subtitles (.srt)
                     </button>
 
-                    <button
-                      onClick={handleDownloadVideo}
-                      disabled={loading}
-                      className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold rounded-2xl shadow-lg hover:shadow-purple-500/30 transition-all flex items-center justify-center gap-3 disabled:opacity-50 text-lg mt-2"
-                    >
-                      {loading ? (
-                        <>
-                          <Loader2 className="w-6 h-6 animate-spin" /> Video ဖန်တီးနေပါသည်...
-                        </>
-                      ) : (
-                        <>
-                          <Download className="w-6 h-6" /> Download Final Video
-                        </>
-                      )}
-                    </button>
+                    {/* Download dubbed MP3 audio */}
+                    {downloadUrl && (
+                      <a
+                        href={downloadUrl}
+                        download="dubbed_audio.mp3"
+                        className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold rounded-2xl shadow-lg hover:shadow-purple-500/30 transition-all flex items-center justify-center gap-3 text-lg mt-2"
+                      >
+                        <Download className="w-6 h-6" /> Download Dubbed Audio (.mp3)
+                      </a>
+                    )}
                   </div>
                 </div>
 
                 <div className="flex flex-col pt-4 gap-3">
                   <p className="text-center text-white/50 text-xs leading-relaxed px-2">
-                    <span className="text-white/70 font-semibold">မှတ်ချက်:</span> Video ထုတ်ယူသည့်အချိန်သည် မူရင်း Video အရွယ်အစား / သင့်ဖုန်းရဲ့ Performance အပေါ်မူတည်ပါသည်။ / internet လုံးဝမလိုပါ ❌ ။
+                    <span className="text-white/70 font-semibold">မှတ်ချက်:</span> Dubbed MP3 ကို Download ရယူပြီး မူရင်း Video နဲ့ ပေါင်းစပ် Edit လုပ်နိုင်ပါသည်။
                   </p>
                   <button
                     onClick={resetFlow}
