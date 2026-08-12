@@ -1468,17 +1468,7 @@ ${textArray}`;
                   </div>
                 )}
 
-                {/* Download Buttons */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {downloadUrl && (
-                    <a href={downloadUrl} download="dubbed_audio.mp3" className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg">
-                      <Download className="w-4 h-4" /> Download Audio (.mp3)
-                    </a>
-                  )}
-                  <button onClick={handleDownloadSRT} className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white border border-white/10">
-                    <Download className="w-4 h-4" /> Download Subtitles (.srt)
-                  </button>
-                </div>
+
 
 
                 <button
@@ -1997,27 +1987,7 @@ ${textArray}`;
                   </div>
                 )}
 
-                {/* Download Buttons */}
-                <div className="flex flex-col w-full gap-3">
-                  {/* Download MP3 */}
-                  {downloadUrl && (
-                    <a
-                      href={downloadUrl}
-                      download="dubbed_audio.mp3"
-                      className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold rounded-2xl shadow-lg hover:shadow-purple-500/30 transition-all flex items-center justify-center gap-3"
-                    >
-                      <Download className="w-5 h-5" /> Download Dubbed Audio (.mp3)
-                    </a>
-                  )}
 
-                  {/* Download SRT */}
-                  <button
-                    onClick={handleDownloadSRT}
-                    className="w-full py-3 bg-white/10 hover:bg-white/20 text-white text-center rounded-xl font-semibold text-sm transition flex items-center justify-center gap-2 border border-white/10"
-                  >
-                    <Download className="w-4 h-4" /> Download Subtitles (.srt)
-                  </button>
-                </div>
 
                 <div className="flex flex-col gap-3 pt-1">
                   <button

@@ -304,19 +304,13 @@ app.post('/api/step1-extract', requireAuth, upload.single('audio'), async (req, 
     res.json({ utterances, remainingLimit, role: user.role, freeVideosUsed: user.freeVideosUsed, lastFreeVideoDate: user.lastFreeVideoDate });
   } catch (error) {
     console.error('Step 1 Error:', error);
-    res.status(500).json({ error: 'Extraction & Transcription failed', details: error.message });
-  }
-});
-
-
-// Step 2: Translate English text to Burmese
-app.post('/api/step2-translate', requireAuth, async (req, res) => {
+    res.status(500).json({ error: 'Extraction & Transcription failed', details: error.message app.post('/api/step2-translate', requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (user.role === 'restrict') return res.status(403).json({ error: 'သင့်အကောင့်ကို ပိတ်ပင်ထားပါသည်။' });
 
-    const { utterances } = req.body;
+    const { utterances, apiKey: clientApiKey } = req.body;
     if (!utterances || !Array.isArray(utterances)) {
       return res.status(400).json({ error: 'Invalid utterances array provided' });
     }
@@ -324,29 +318,43 @@ app.post('/api/step2-translate', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Too many utterances. Maximum allowed is 500.' });
     }
 
-    // ⚠️ Translation ALWAYS uses Admin's Gemini API Key only.
-    // Free users cannot use admin key at all.
-    // Groq is NEVER used for translation.
-    if (user.role === 'free') {
-      return res.status(403).json({ error: 'Free users cannot use the translation feature. Please upgrade to Premium.' });
-    }
-
     const settings = await Settings.findOne();
-    const geminiKey = settings?.geminiKey;
+    const adminGeminiKey = settings?.geminiKey;
 
-    if (!geminiKey || geminiKey.trim() === '') {
-      return res.status(400).json({ 
-        error: 'Admin မှ Gemini API Key သတ်မှတ်မထားသေးပါ။ Admin Dashboard တွင် Gemini Key ထည့်သွင်းပေးပါ။' 
-      });
+    let geminiKey;
+
+    if (user.role === 'free') {
+      // Free users: MUST provide their own Gemini API key
+      if (!clientApiKey || clientApiKey.trim() === '') {
+        return res.status(403).json({ 
+          error: 'Free users တွေဟာ ကိုယ်ပိုင် Gemini API Key ထည့်မှသာ ဘာသာပြန်နိုင်ပါတယ်။' 
+        });
+      }
+      geminiKey = clientApiKey.trim();
+    } else {
+      // Premium/Admin: Use client's key if provided, otherwise fall back to admin key
+      geminiKey = (clientApiKey && clientApiKey.trim()) ? clientApiKey.trim() : adminGeminiKey;
+      if (!geminiKey || geminiKey.trim() === '') {
+        return res.status(400).json({ 
+          error: 'Admin မှ Gemini API Key သတ်မှတ်မထားသေးပါ။ Admin Dashboard တွင် Gemini Key ထည့်သွင်းပေးပါ။' 
+        });
+      }
     }
 
-    console.log(`[Step 2] Received ${utterances.length} utterances. Translating with Gemini key: ${geminiKey.substring(0, 10)}...`);
+    console.log(`[Step 2] ${user.role} user | ${utterances.length} utterances | key: ${geminiKey.substring(0, 10)}...`);
     const translatedUtterances = await translateUtterances(utterances, geminiKey);
 
     console.log(`[Step 2] Translation complete.`);
     res.json({ translatedUtterances });
   } catch (error) {
     console.error('Step 2 Error:', error);
+    res.status(500).json({ 
+      error: 'Translation failed', 
+      details: error.message 
+    });
+  }
+});
+r:', error);
     // Return the exact Gemini error message so user can see what went wrong
     res.status(500).json({ 
       error: 'Translation failed', 
