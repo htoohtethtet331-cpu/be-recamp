@@ -2617,6 +2617,10 @@ const UserProfileDrawer = ({ isOpen, onClose, user, logout, packages = [], setSh
                     <span className="text-2xl font-black text-white">{pkg.mmk.toLocaleString()} MMK</span>
                     <span className="text-sm text-gray-400 mb-1 ml-1">/ {pkg.bath} Bath</span>
                   </div>
+                  <div className="mt-2 flex items-center gap-2 text-emerald-400 text-sm font-medium bg-emerald-500/10 w-fit px-2 py-1 rounded-md border border-emerald-500/20">
+                    <Video className="w-4 h-4" />
+                    <span>{pkg.videos} Videos</span>
+                  </div>
                 </div>
                 <button className={`w-full py-2 rounded-lg text-sm font-bold transition ${pkg.isPopular ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/30 hover:bg-purple-600' : 'bg-blue-500/20 hover:bg-blue-500 text-blue-300 hover:text-white'}`}>ဝယ်မည်</button>
               </div>
