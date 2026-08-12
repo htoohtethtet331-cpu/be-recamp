@@ -17,6 +17,14 @@ const settingsSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  telegramBotToken: {
+    type: String,
+    default: ''
+  },
+  telegramChatId: {
+    type: String,
+    default: ''
+  },
   kpayQr: {
     type: String,
     default: ''

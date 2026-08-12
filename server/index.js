@@ -173,10 +173,10 @@ app.get('/api/admin/keys', requireAdmin, async (req, res) => {
 // Update API Keys & Packages
 app.post('/api/admin/keys', requireAdmin, async (req, res) => {
   try {
-    const { geminiKey, groqKey, groqKeys, assemblyAiKey, packages, kpayQr, waveQr, promptpayQr } = req.body;
+    const { geminiKey, groqKey, groqKeys, assemblyAiKey, packages, kpayQr, waveQr, promptpayQr, telegramBotToken, telegramChatId } = req.body;
     let settings = await Settings.findOne();
     if (!settings) {
-      settings = await Settings.create({ geminiKey, groqKey, groqKeys, assemblyAiKey, packages, kpayQr, waveQr, promptpayQr });
+      settings = await Settings.create({ geminiKey, groqKey, groqKeys, assemblyAiKey, packages, kpayQr, waveQr, promptpayQr, telegramBotToken, telegramChatId });
     } else {
       if (geminiKey !== undefined) settings.geminiKey = geminiKey;
       if (groqKey !== undefined) settings.groqKey = groqKey;
@@ -186,7 +186,28 @@ app.post('/api/admin/keys', requireAdmin, async (req, res) => {
       if (kpayQr !== undefined) settings.kpayQr = kpayQr;
       if (waveQr !== undefined) settings.waveQr = waveQr;
       if (promptpayQr !== undefined) settings.promptpayQr = promptpayQr;
+      if (promptpayQr !== undefined) settings.promptpayQr = promptpayQr;
+      
+      let setWebhook = false;
+      if (telegramBotToken !== undefined && telegramBotToken !== settings.telegramBotToken) {
+        settings.telegramBotToken = telegramBotToken;
+        setWebhook = true;
+      }
+      if (telegramChatId !== undefined) settings.telegramChatId = telegramChatId;
+      
       await settings.save();
+      
+      // Auto-register webhook
+      if (setWebhook && settings.telegramBotToken) {
+        try {
+          const webhookUrl = `https://deeplearnaixrecapstudio.app/api/telegram/webhook`;
+          const response = await fetch(`https://api.telegram.org/bot${settings.telegramBotToken}/setWebhook?url=${webhookUrl}`);
+          const data = await response.json();
+          console.log('[Telegram] Set Webhook result:', data);
+        } catch(e) {
+          console.error('[Telegram] Failed to set webhook:', e);
+        }
+      }
     }
     res.json(settings);
   } catch (error) {
@@ -287,10 +308,119 @@ app.post('/api/payment/submit', requireAuth, upload.single('receipt'), async (re
     await payment.save();
     console.log(`[Payment] New request from ${user.name} (${user.email}) for ${packageTitle}`);
     
+    // Telegram Bot Integration
+    try {
+      const settings = await Settings.findOne();
+      if (settings && settings.telegramBotToken && settings.telegramChatId) {
+        const formData = new FormData();
+        formData.append('chat_id', settings.telegramChatId);
+        
+        const caption = `User name - ${user.name}\nEmail - ${user.email}\nသူဝယ်မဲ့ package Name - ${packageTitle}\nVedio ထုတ်မဲ့ အရေအတွက် - ${packageVideos}`;
+        formData.append('caption', caption);
+        
+        const fileBuffer = fs.readFileSync(file.path);
+        const blob = new Blob([fileBuffer], { type: file.mimetype });
+        formData.append('photo', blob, file.originalname);
+        
+        const replyMarkup = JSON.stringify({
+          inline_keyboard: [
+            [
+              { text: 'Accept ✅', callback_data: `accept_${payment._id}` },
+              { text: 'Deny ❌', callback_data: `deny_${payment._id}` }
+            ]
+          ]
+        });
+        formData.append('reply_markup', replyMarkup);
+
+        await fetch(`https://api.telegram.org/bot${settings.telegramBotToken}/sendPhoto`, {
+          method: 'POST',
+          body: formData
+        });
+        console.log(`[Telegram] Sent payment notification for ${payment._id}`);
+      }
+    } catch (telegramErr) {
+      console.error('[Telegram] Failed to send notification:', telegramErr);
+      // We do not fail the request if Telegram fails.
+    }
+
     res.status(201).json({ success: true, message: 'Payment submitted successfully', payment });
   } catch (error) {
     console.error('Payment submit error:', error);
     res.status(500).json({ error: 'Failed to submit payment' });
+  }
+});
+
+// Telegram Webhook for Payment Callbacks
+app.post('/api/telegram/webhook', async (req, res) => {
+  try {
+    const update = req.body;
+    if (update.callback_query) {
+      const callbackQuery = update.callback_query;
+      const data = callbackQuery.data; 
+      const messageId = callbackQuery.message.message_id;
+      const chatId = callbackQuery.message.chat.id;
+
+      const action = data.split('_')[0];
+      const paymentId = data.split('_')[1];
+
+      const payment = await Payment.findById(paymentId);
+      const settings = await Settings.findOne();
+      const botToken = settings?.telegramBotToken;
+
+      if (payment && payment.status === 'pending') {
+        if (action === 'accept') {
+          payment.status = 'approved';
+          await payment.save();
+
+          const userToUpdate = await User.findById(payment.userId);
+          if (userToUpdate) {
+            userToUpdate.role = 'premium';
+            userToUpdate.videoLimit = (userToUpdate.videoLimit || 0) + payment.packageVideos;
+            await userToUpdate.save();
+          }
+
+          if (botToken) {
+            await fetch(`https://api.telegram.org/bot${botToken}/editMessageCaption`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: chatId,
+                message_id: messageId,
+                caption: callbackQuery.message.caption + '\n\n✅ APPROVED: Added ' + payment.packageVideos + ' videos.'
+              })
+            });
+          }
+        } else if (action === 'deny') {
+          payment.status = 'rejected';
+          await payment.save();
+
+          if (botToken) {
+            await fetch(`https://api.telegram.org/bot${botToken}/editMessageCaption`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: chatId,
+                message_id: messageId,
+                caption: callbackQuery.message.caption + '\n\n❌ DENIED'
+              })
+            });
+          }
+        }
+      }
+      
+      // Answer callback query to remove loading state on button
+      if (botToken) {
+        await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callback_query_id: callbackQuery.id })
+        });
+      }
+    }
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('Webhook error:', error);
+    res.status(200).send('OK'); // Always return 200 to Telegram
   }
 });
 

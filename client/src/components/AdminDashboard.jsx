@@ -12,8 +12,8 @@ export default function AdminDashboard({ onBack }) {
     : `http://${window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname}:5001/api`;
 
   // Keys state
-  const [keys, setKeys] = useState({ geminiKey: '', groqKey: '', groqKeys: ['', '', '', '', ''], assemblyAiKey: '', packages: [], kpayQr: '', waveQr: '', promptpayQr: '' });
-  const [showKeys, setShowKeys] = useState({ gemini: false, groq1: false, groq2: false, groq3: false, groq4: false, groq5: false, assembly: false });
+  const [keys, setKeys] = useState({ geminiKey: '', groqKey: '', groqKeys: ['', '', '', '', ''], assemblyAiKey: '', packages: [], kpayQr: '', waveQr: '', promptpayQr: '', telegramBotToken: '', telegramChatId: '' });
+  const [showKeys, setShowKeys] = useState({ gemini: false, groq1: false, groq2: false, groq3: false, groq4: false, groq5: false, assembly: false, telegramToken: false });
   const [loadingKeys, setLoadingKeys] = useState(true);
   const [savingKeys, setSavingKeys] = useState(false);
   const [keyMessage, setKeyMessage] = useState('');
@@ -45,7 +45,9 @@ export default function AdminDashboard({ onBack }) {
           packages: response.data.packages || [],
           kpayQr: response.data.kpayQr || '',
           waveQr: response.data.waveQr || '',
-          promptpayQr: response.data.promptpayQr || ''
+          promptpayQr: response.data.promptpayQr || '',
+          telegramBotToken: response.data.telegramBotToken || '',
+          telegramChatId: response.data.telegramChatId || ''
         });
       } catch (error) {
         console.error('Failed to fetch keys:', error);
@@ -87,6 +89,17 @@ export default function AdminDashboard({ onBack }) {
   const handleRemovePackage = (index) => {
     const newPackages = keys.packages.filter((_, i) => i !== index);
     setKeys({ ...keys, packages: newPackages });
+  };
+
+  const handleQrUpload = (e, field) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setKeys({ ...keys, [field]: reader.result });
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleSaveKeys = async (e) => {
@@ -230,25 +243,81 @@ export default function AdminDashboard({ onBack }) {
                   </button>
                 </div>
               </div>
+              
+              {/* Telegram Bot Config */}
+              <div className="pt-6 border-t border-white/10 mt-6 space-y-4">
+                <div>
+                  <h3 className="text-lg font-bold text-white">Telegram Bot Notification (Payment Approvals)</h3>
+                  <p className="text-xs text-gray-400">Receive payment requests with receipt photos in Telegram and approve/deny them instantly.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-300 mb-1.5">Telegram Bot Token</label>
+                    <div className="relative">
+                      <input type={showKeys.telegramToken ? "text" : "password"} value={keys.telegramBotToken} onChange={(e) => setKeys({ ...keys, telegramBotToken: e.target.value })} className="w-full bg-black/20 border border-white/10 text-white rounded-xl pl-4 pr-12 py-3 outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-600" placeholder="123456789:ABCdefGHIjkl..." />
+                      <button type="button" onClick={() => setShowKeys({ ...showKeys, telegramToken: !showKeys.telegramToken })} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200">
+                        {showKeys.telegramToken ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-300 mb-1.5">Telegram Chat ID</label>
+                    <input type="text" value={keys.telegramChatId} onChange={(e) => setKeys({ ...keys, telegramChatId: e.target.value })} className="w-full bg-black/20 border border-white/10 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-600" placeholder="e.g. 123456789 or @channelname" />
+                  </div>
+                </div>
+              </div>
 
               {/* Payment QR Codes */}
               <div className="pt-6 border-t border-white/10 mt-6 space-y-4">
                 <div>
-                  <h3 className="text-lg font-bold text-white">Payment QR Codes (URLs)</h3>
-                  <p className="text-xs text-gray-400">Enter direct image URLs (e.g. from Imgur) for the payment QR codes.</p>
+                  <h3 className="text-lg font-bold text-white">Payment QR Codes (Photo Upload)</h3>
+                  <p className="text-xs text-gray-400">Upload the QR code images for users to scan when purchasing.</p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* KPay */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-300 mb-1.5">KPay QR URL</label>
-                    <input type="text" value={keys.kpayQr} onChange={(e) => setKeys({ ...keys, kpayQr: e.target.value })} className="w-full bg-black/20 border border-white/10 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-600" placeholder="https://..." />
+                    <label className="block text-sm font-semibold text-gray-300 mb-1.5">KPay QR</label>
+                    <label className="flex flex-col items-center justify-center w-full h-32 px-4 transition bg-black/20 border-2 border-white/10 border-dashed rounded-xl appearance-none cursor-pointer hover:border-blue-500/50 hover:bg-white/5 overflow-hidden">
+                      {keys.kpayQr ? (
+                        <img src={keys.kpayQr} alt="KPay QR" className="h-full object-contain" />
+                      ) : (
+                        <div className="flex flex-col items-center space-y-2 text-gray-400">
+                          <UploadCloud className="w-6 h-6" />
+                          <span className="text-xs font-medium">Upload KPay QR</span>
+                        </div>
+                      )}
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => handleQrUpload(e, 'kpayQr')} />
+                    </label>
                   </div>
+                  {/* Wave Pay */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-300 mb-1.5">Wave Pay QR URL</label>
-                    <input type="text" value={keys.waveQr} onChange={(e) => setKeys({ ...keys, waveQr: e.target.value })} className="w-full bg-black/20 border border-white/10 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-600" placeholder="https://..." />
+                    <label className="block text-sm font-semibold text-gray-300 mb-1.5">Wave Pay QR</label>
+                    <label className="flex flex-col items-center justify-center w-full h-32 px-4 transition bg-black/20 border-2 border-white/10 border-dashed rounded-xl appearance-none cursor-pointer hover:border-yellow-500/50 hover:bg-white/5 overflow-hidden">
+                      {keys.waveQr ? (
+                        <img src={keys.waveQr} alt="Wave Pay QR" className="h-full object-contain" />
+                      ) : (
+                        <div className="flex flex-col items-center space-y-2 text-gray-400">
+                          <UploadCloud className="w-6 h-6" />
+                          <span className="text-xs font-medium">Upload Wave QR</span>
+                        </div>
+                      )}
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => handleQrUpload(e, 'waveQr')} />
+                    </label>
                   </div>
+                  {/* PromptPay */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-300 mb-1.5">PromptPay QR URL</label>
-                    <input type="text" value={keys.promptpayQr} onChange={(e) => setKeys({ ...keys, promptpayQr: e.target.value })} className="w-full bg-black/20 border border-white/10 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-600" placeholder="https://..." />
+                    <label className="block text-sm font-semibold text-gray-300 mb-1.5">PromptPay QR</label>
+                    <label className="flex flex-col items-center justify-center w-full h-32 px-4 transition bg-black/20 border-2 border-white/10 border-dashed rounded-xl appearance-none cursor-pointer hover:border-indigo-500/50 hover:bg-white/5 overflow-hidden">
+                      {keys.promptpayQr ? (
+                        <img src={keys.promptpayQr} alt="PromptPay QR" className="h-full object-contain" />
+                      ) : (
+                        <div className="flex flex-col items-center space-y-2 text-gray-400">
+                          <UploadCloud className="w-6 h-6" />
+                          <span className="text-xs font-medium">Upload PromptPay QR</span>
+                        </div>
+                      )}
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => handleQrUpload(e, 'promptpayQr')} />
+                    </label>
                   </div>
                 </div>
               </div>
