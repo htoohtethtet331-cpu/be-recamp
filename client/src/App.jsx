@@ -591,13 +591,16 @@ function App() {
       // ── Done: MP3 ready for download ──
       setAutoProgress(100);
       setAutoStep(5);
-      setUtterances(ttsRes.data.updatedUtterances || ttsRes.data.utterances || []);
       setPreviewAudioUrl(audioUrl);
       setDownloadUrl(audioUrl);
       setVideoSegments([]);
       // AI Recap: store timing data for client-side video processing
       if (ttsRes.data.recapMode && ttsRes.data.utterancesForVideo) {
         setUtterancesForVideo(ttsRes.data.utterancesForVideo);
+        // Recap mode does not echo utterances back — keep translatedUtterances so SRT generation has text
+        setUtterances(prev => (prev && prev.length > 0) ? prev : translatedUtterances);
+      } else {
+        setUtterances(ttsRes.data.updatedUtterances || ttsRes.data.utterances || []);
       }
       setLoading(false);
 
@@ -803,6 +806,122 @@ function App() {
     } finally {
       setRecapMerging(false);
     }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // generateRecapSRT — pure client-side phrase-split subtitle generator
+  //
+  //   Each utterance's translatedText may contain ། (Burmese period) markers
+  //   placed by the Gemini translation prompt to denote sentence/phrase boundaries.
+  //
+  //   Algorithm per utterance:
+  //     1. Split translatedText by ། (or | as fallback) → phrases[]
+  //     2. Total character count across all phrases
+  //     3. Each phrase gets time = segDuration × (phraseCharCount / totalCharCount)
+  //     4. Minimum display time: 0.4s per phrase
+  //     5. Timestamps capped to segment boundary (newVideoEnd)
+  //
+  //   If no ། found → whole utterance is one subtitle entry (backward compat).
+  //   Uses utterancesForVideo.newVideoStart/End (server-computed, exact).
+  // ─────────────────────────────────────────────────────────────────────────
+  const generateRecapSRT = () => {
+    if (!utterancesForVideo || utterancesForVideo.length === 0) {
+      alert('Step 3 (TTS) ပြီးမှ SRT ထုတ်နိုင်ပါမည်။');
+      return;
+    }
+
+    // Sort both arrays by original start time (server sorts by start, so this keeps parity)
+    const sortedMap = [...utterancesForVideo].sort((a, b) => a.origStart - b.origStart);
+    const sortedUtterances = [...utterances].sort((a, b) => a.start - b.start);
+
+    // ── helpers ──
+    const pad2 = (n) => String(Math.floor(Math.abs(n))).padStart(2, '0');
+    const toSrtTime = (sec) => {
+      const s = Math.max(0, sec);
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const ss = Math.floor(s % 60);
+      const ms = Math.round((s % 1) * 1000);
+      return `${pad2(h)}:${pad2(m)}:${pad2(ss)},${String(ms).padStart(3, '0')}`;
+    };
+
+    const MIN_PHRASE_DURATION = 0.4; // seconds — minimum subtitle display time
+
+    let srt = '';
+    let idx = 1;
+
+    for (let i = 0; i < sortedMap.length; i++) {
+      const vm = sortedMap[i];
+
+      // Match utterance by origStart (within 50ms tolerance), fallback to index
+      const utt =
+        sortedUtterances.find(u => Math.abs(u.start - vm.origStart) < 50) ||
+        sortedUtterances[i];
+
+      const rawText = (utt?.translatedText || utt?.text || '').trim();
+      if (!rawText) continue;
+
+      const segStart = vm.newVideoStart;   // seconds in final video
+      const segEnd   = vm.newVideoEnd;     // seconds in final video
+      const segDur   = Math.max(segEnd - segStart, 0.1);
+
+      // ── Split by ། (primary) and | (secondary), strip empties ──
+      // Keep the ། at end of each phrase for display (it looks natural in Burmese)
+      const rawPhrases = rawText.split(/[།|]/).map(p => p.trim()).filter(p => p.length > 0);
+
+      if (rawPhrases.length <= 1) {
+        // No phrase splits found — one entry for the whole utterance
+        srt += `${idx}\n${toSrtTime(segStart)} --> ${toSrtTime(segEnd)}\n${rawText}\n\n`;
+        idx++;
+        continue;
+      }
+
+      // ── Proportional timing by character count ──
+      const totalChars = rawPhrases.reduce((sum, p) => sum + p.length, 0);
+      if (totalChars === 0) continue;
+
+      let cursor = segStart;
+
+      for (let pi = 0; pi < rawPhrases.length; pi++) {
+        const phrase = rawPhrases[pi];
+        const isLast = pi === rawPhrases.length - 1;
+
+        // Proportional share of segment duration
+        const ratio = phrase.length / totalChars;
+        let phraseDur = segDur * ratio;
+
+        // Enforce minimum display time
+        phraseDur = Math.max(phraseDur, MIN_PHRASE_DURATION);
+
+        // Last phrase snaps to exact segEnd to avoid floating-point gap
+        const phraseEnd = isLast ? segEnd : Math.min(cursor + phraseDur, segEnd);
+
+        // Skip zero-width or negative entries (can happen if segDur is tiny)
+        if (phraseEnd > cursor + 0.01) {
+          srt += `${idx}\n${toSrtTime(cursor)} --> ${toSrtTime(phraseEnd)}\n${phrase}\n\n`;
+          idx++;
+        }
+
+        cursor = phraseEnd;
+        if (cursor >= segEnd) break; // budget exhausted
+      }
+    }
+
+    if (!srt.trim()) {
+      alert('SRT ထုတ်ရန် subtitle text မတွေ့ပါ။ Step 2 (Translate) ပြီးမှ Step 3 ပြန်လုပ်ပါ။');
+      return;
+    }
+
+    const blob = new Blob([srt], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (file?.name?.replace(/\.[^.]+$/, '') || 'recap') + '_subtitles.srt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    console.log(`[Recap SRT] Generated ${idx - 1} subtitle entries from ${sortedMap.length} utterances.`);
   };
 
   const handleCancelAutoProcess = () => {
@@ -1102,6 +1221,8 @@ function App() {
 CRITICAL TIME LIMIT CONSTRAINT: For each subtitle, I have provided the exact Time Frame (e.g. from Second A to Second B) and the Max Limit in seconds. 
 If your Burmese translation takes longer to speak than this time, the TTS audio will OVERLAP and ruin the video. 
 You MUST provide a translation that fits perfectly within this time frame. If the time limit is very short (e.g., under 2 seconds), you MUST aggressively compress and summarize the Burmese translation (ချုံ့ပေးပါ) so it can be spoken very fast. Discard polite particles and unnecessary words. Do not translate word-for-word.
+
+SUBTITLE SPLITTING RULE: After each natural sentence or phrase, add the Burmese period (။) to mark the boundary. This splits long subtitles into short readable lines. Example: "ပထမကြောင်း။ ဒုတိယကြောင်း။" — one ။ per phrase. Short segments (under 2s) may have just one phrase ending with ။.
 
 Return the result STRICTLY as a JSON object with a single key "translations" which contains an array of strings, where each string is the translated Burmese text corresponding to the input ID in order.
 Example:
@@ -1457,6 +1578,15 @@ ${textArray}`;
                     <a href={recapVideoUrl} download="ai_recap_video.mp4" className="w-full py-3 bg-gradient-to-r from-orange-600 to-amber-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg">
                       <Download className="w-5 h-5" /> Download AI Recap Video (.mp4)
                     </a>
+                    {/* SRT download — timestamps from utterancesForVideo (server-computed, per-segment) */}
+                    {utterancesForVideo.length > 0 && (
+                      <button
+                        onClick={generateRecapSRT}
+                        className="w-full py-2.5 bg-white/10 border border-orange-400/30 hover:bg-orange-500/20 text-orange-300 font-bold rounded-xl flex items-center justify-center gap-2 text-sm transition-all"
+                      >
+                        <Download className="w-4 h-4" /> Download Subtitle (.srt) — လုပ်မည် timing ကိုက်ညိပ်
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -2079,6 +2209,15 @@ ${textArray}`;
                       >
                         <Download className="w-6 h-6" /> Download AI Recap Video (.mp4)
                       </a>
+                      {/* SRT download — timestamps from utterancesForVideo (server-computed per-segment stretch) */}
+                      {utterancesForVideo.length > 0 && (
+                        <button
+                          onClick={generateRecapSRT}
+                          className="w-full py-3 bg-white/10 border border-orange-400/30 hover:bg-orange-500/20 text-orange-300 font-bold rounded-xl flex items-center justify-center gap-2 text-sm transition-all"
+                        >
+                          <Download className="w-5 h-5" /> Download Subtitle (.srt) — လုပ်မည် timing ကိုက်ညိပ်
+                        </button>
+                      )}
                       <button
                         onClick={() => { setRecapVideoUrl(''); setRecapProgress(0); }}
                         className="w-full py-2 bg-white/10 hover:bg-white/20 text-white/60 rounded-xl text-sm transition"

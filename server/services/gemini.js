@@ -165,6 +165,7 @@ CRITICAL RULES:
 3. Each block has a "Budget" (target character count for the Burmese output). A faithful translation that runs a little long is acceptable; a choppy one that loses meaning is not.
 4. Output must be pure Myanmar script only. No English words, no parenthetical notes.
 5. CRITICAL: DO NOT use double quotes (") inside your translations. If you need to quote something, use single quotes ('). Unescaped double quotes will break the JSON parser.
+6. SUBTITLE SPLITTING: After each natural sentence or phrase boundary, place a Burmese period (။). This allows the subtitle system to split long translations into short, readable lines. For example, if the text has two ideas: "ပထမအကြောင်းအချက်။ ဒုတိယအကြောင်းအချက်။" — one ။ per phrase. SHORT phrases (1–3 seconds) may have just one phrase with one ။ at the end.
 
 __PREVIOUS_CONTEXT__
 OUTPUT FORMAT: Return ONLY a valid JSON object:
