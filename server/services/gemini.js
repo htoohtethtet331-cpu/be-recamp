@@ -19,7 +19,7 @@ async function callGeminiWithRetry(apiKey, prompt, retries = 3) {
       if (cleanKey.startsWith('AIza')) {
         // Native Google Gemini API
         response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${cleanKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${cleanKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
