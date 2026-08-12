@@ -1,9 +1,5 @@
 const { AssemblyAI } = require('assemblyai');
 
-function canBreak(words, i) {
-    if (i <= 0) return false;
-    return true;
-}
 
 const getTranscriptAndTimestamps = async (filePath, clientApiKey, isFreeUser = false) => {
   try {
@@ -79,7 +75,7 @@ const getTranscriptAndTimestamps = async (filePath, clientApiKey, isFreeUser = f
     for (let i = 0; i < words.length; i++) {
         const word = words[i];
         
-        // A speaker change ALWAYS starts a new block
+        // A speaker change ALWAYS starts a new block — current word goes into new block
         if (word.speaker !== currentSpeaker) {
             if (currentBlock.length > 0) {
                 blocks.push(currentBlock);
@@ -93,19 +89,29 @@ const getTranscriptAndTimestamps = async (filePath, clientApiKey, isFreeUser = f
 
         if (currentBlock.length === 1) continue;
         
+        // prevWord is the word just before the current one
         const prevWord = currentBlock[currentBlock.length - 2];
-        const blockDuration = word.end - currentBlock[0].start; // in ms
-        const pause = word.start - prevWord.end; // in ms
+        // Duration from the first word of this block to current word's end (ms)
+        const blockDuration = word.end - currentBlock[0].start;
+        // Silence gap between prevWord and current word (ms)
+        const pause = word.start - prevWord.end;
         
-        // Check punctuation on previous word
+        // Check punctuation on prevWord (the word ending before current)
         const textToTest = prevWord.text;
         const isSentenceEnd = /[.!?]$/.test(textToTest);
-        const isClauseEnd = /[,;]$/.test(textToTest) || /，$/.test(textToTest);
+        const isClauseEnd   = /[,;]$/.test(textToTest) || /，$/.test(textToTest);
 
         if (blockDuration >= 3000) {
             if (isSentenceEnd || isClauseEnd || pause >= 900 || blockDuration >= 10000) {
-                blocks.push(currentBlock);
-                currentBlock = [];
+                // ── FIX: pop current word out BEFORE pushing the block ──
+                // The split point is BETWEEN prevWord and word:
+                //   old block ends at prevWord.end
+                //   new block starts at word.start (correct semantic boundary)
+                currentBlock.pop();
+                if (currentBlock.length > 0) {
+                    blocks.push(currentBlock);
+                }
+                currentBlock = [word]; // current word begins the new block
             }
         }
     }
