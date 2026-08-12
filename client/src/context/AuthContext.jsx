@@ -31,7 +31,7 @@ export const AuthProvider = ({ children }) => {
             .then(res => res.json())
             .then(data => {
               if (data.token && data.user) {
-                if (data.user.role !== decoded.role || data.user.videoLimit !== decoded.videoLimit) {
+                if (data.user.role !== decoded.role || data.user.videoLimit !== decoded.videoLimit || data.user.email !== decoded.email) {
                   setToken(data.token);
                 }
               }
