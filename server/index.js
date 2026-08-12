@@ -304,7 +304,13 @@ app.post('/api/step1-extract', requireAuth, upload.single('audio'), async (req, 
     res.json({ utterances, remainingLimit, role: user.role, freeVideosUsed: user.freeVideosUsed, lastFreeVideoDate: user.lastFreeVideoDate });
   } catch (error) {
     console.error('Step 1 Error:', error);
-    res.status(500).json({ error: 'Extraction & Transcription failed', details: error.message app.post('/api/step2-translate', requireAuth, async (req, res) => {
+    res.status(500).json({ error: 'Extraction & Transcription failed', details: error.message });
+  }
+});
+
+
+// Step 2: Translate English text to Burmese
+app.post('/api/step2-translate', requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -348,14 +354,6 @@ app.post('/api/step1-extract', requireAuth, upload.single('audio'), async (req, 
     res.json({ translatedUtterances });
   } catch (error) {
     console.error('Step 2 Error:', error);
-    res.status(500).json({ 
-      error: 'Translation failed', 
-      details: error.message 
-    });
-  }
-});
-r:', error);
-    // Return the exact Gemini error message so user can see what went wrong
     res.status(500).json({ 
       error: 'Translation failed', 
       details: error.message 
