@@ -2179,7 +2179,7 @@ ${textArray}`;
 
       {/* Payment Modal */}
       {paymentModalPkg && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-[#1a1a2e] rounded-3xl w-full max-w-md border border-white/10 overflow-hidden flex flex-col max-h-[90vh]">
             <div className="flex justify-between items-center p-5 border-b border-white/10 shrink-0">
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -2252,7 +2252,7 @@ ${textArray}`;
                           <UploadCloud className="w-6 h-6 text-purple-400" />
                           <span className="font-medium text-gray-400 text-xs text-center">
                             {paymentFile ? (
-                              <span className="text-emerald-400">{paymentFile.name}</span>
+                              <span className="text-emerald-400 block max-w-[250px] truncate" title={paymentFile.name}>{paymentFile.name}</span>
                             ) : (
                               <>Drop file to attach, or <span className="text-purple-400 underline">browse</span></>
                             )}
