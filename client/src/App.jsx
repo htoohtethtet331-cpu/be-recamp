@@ -1080,39 +1080,126 @@ function App() {
     }
   };
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // handleDownloadSRT — unified space-split SRT generator (Dubbing + Recap)
+  //
+  //   Splits each utterance's translated text into short subtitle entries by:
+  //     1. Splitting by whitespace → Burmese word groups
+  //     2. Greedily accumulating into chunks of ~MAX_CHUNK_CHARS
+  //     3. Distributing timing proportionally by character count
+  //
+  //   Timing source:
+  //     • Recap mode + utterancesForVideo available → per-segment remapped timestamps
+  //     • Otherwise (Dubbing mode) → utterance newStartSec/newEndSec (or start/end ms)
+  // ─────────────────────────────────────────────────────────────────────────
   const handleDownloadSRT = () => {
     if (!utterances || utterances.length === 0) return;
 
-    let srtContent = '';
+    const MAX_CHUNK_CHARS = 22;   // max chars per subtitle line
+    const MIN_DISPLAY_SEC = 0.35; // minimum display time per entry
 
-    // Helper to convert milliseconds to SRT time format: HH:MM:SS,mmm
-    const formatTime = (ms) => {
-      const date = new Date(ms);
-      const hours = String(date.getUTCHours()).padStart(2, '0');
-      const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-      const seconds = String(date.getUTCSeconds()).padStart(2, '0');
-      const milliseconds = String(date.getUTCMilliseconds()).padStart(3, '0');
-      return `${hours}:${minutes}:${seconds},${milliseconds}`;
+    const pad2 = (n) => String(Math.floor(Math.abs(n))).padStart(2, '0');
+    const toSrtTime = (sec) => {
+      const s = Math.max(0, sec);
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const ss = Math.floor(s % 60);
+      const ms = Math.round((s % 1) * 1000);
+      return `${pad2(h)}:${pad2(m)}:${pad2(ss)},${String(ms).padStart(3, '0')}`;
     };
 
-    utterances.forEach((u, index) => {
-      const startTime = u.newStartMs || u.start || 0;
-      const endTime = u.newEndMs || u.end || 0;
-      const text = u.translatedText || u.text || '';
+    // ── Helper: chunk rawText into short lines, return [{text, start, end}] ──
+    const splitIntoChunks = (rawText, segStart, segEnd) => {
+      const segDur = Math.max(segEnd - segStart, 0.1);
+      const words  = rawText.split(/\s+/).filter(w => w.length > 0);
 
-      srtContent += `${index + 1}\n`;
-      srtContent += `${formatTime(startTime)} --> ${formatTime(endTime)}\n`;
-      srtContent += `${text}\n\n`;
+      if (words.length <= 1) {
+        return [{ text: rawText, start: segStart, end: segEnd }];
+      }
+
+      // Greedy grouping by char count
+      const chunks = [];
+      let current = '';
+      for (const word of words) {
+        const addLen = current.length > 0 ? current.length + 1 + word.length : word.length;
+        if (current.length > 0 && addLen > MAX_CHUNK_CHARS) {
+          chunks.push(current);
+          current = word;
+        } else {
+          current = current.length > 0 ? `${current} ${word}` : word;
+        }
+      }
+      if (current.length > 0) chunks.push(current);
+
+      if (chunks.length <= 1) {
+        return [{ text: rawText, start: segStart, end: segEnd }];
+      }
+
+      // Proportional timing
+      const totalChars = chunks.reduce((sum, c) => sum + c.length, 0);
+      const result = [];
+      let cursor = segStart;
+
+      for (let ci = 0; ci < chunks.length; ci++) {
+        const isLast = ci === chunks.length - 1;
+        const ratio    = chunks[ci].length / totalChars;
+        const rawDur   = Math.max(segDur * ratio, MIN_DISPLAY_SEC);
+        const chunkEnd = isLast ? segEnd : Math.min(cursor + rawDur, segEnd);
+        if (chunkEnd > cursor + 0.01) {
+          result.push({ text: chunks[ci], start: cursor, end: chunkEnd });
+        }
+        cursor = chunkEnd;
+        if (cursor >= segEnd) break;
+      }
+      return result;
+    };
+
+    // ── Build entries list ──
+    let entries = [];
+    const sortedUtterances = [...utterances].sort((a, b) => a.start - b.start);
+
+    const useRecap = processingMode === 'recap' && utterancesForVideo && utterancesForVideo.length > 0;
+
+    if (useRecap) {
+      // Recap mode: use server-computed remapped timestamps from utterancesForVideo
+      const sortedMap = [...utterancesForVideo].sort((a, b) => a.origStart - b.origStart);
+      for (let i = 0; i < sortedMap.length; i++) {
+        const vm  = sortedMap[i];
+        const utt = sortedUtterances.find(u => Math.abs(u.start - vm.origStart) < 50) || sortedUtterances[i];
+        const rawText = (utt?.translatedText || utt?.text || '').trim();
+        if (!rawText) continue;
+        entries.push(...splitIntoChunks(rawText, vm.newVideoStart, vm.newVideoEnd));
+      }
+    } else {
+      // Dubbing mode (or recap without utterancesForVideo): use utterance timing
+      for (const utt of sortedUtterances) {
+        const rawText  = (utt.translatedText || utt.text || '').trim();
+        if (!rawText) continue;
+        // Prefer post-mix timing (newStartSec/newEndSec), fall back to original
+        const segStart = utt.newStartSec ?? (utt.start / 1000);
+        const segEnd   = utt.newEndSec   ?? (utt.end   / 1000);
+        entries.push(...splitIntoChunks(rawText, segStart, segEnd));
+      }
+    }
+
+    if (entries.length === 0) return;
+
+    // ── Build SRT string ──
+    let srt = '';
+    entries.forEach((e, i) => {
+      srt += `${i + 1}\n${toSrtTime(e.start)} --> ${toSrtTime(e.end)}\n${e.text}\n\n`;
     });
 
-    const blob = new Blob([srtContent], { type: 'text/srt;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
+    const blob = new Blob([srt], { type: 'text/plain;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `RecapStudio_${Date.now()}.srt`;
+    link.download = (file?.name?.replace(/\.[^.]+$/, '') || 'video') + '_subtitles.srt';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    console.log(`[SRT] ${entries.length} entries | mode=${processingMode} | recap=${useRecap}`);
   };
 
   const handleDownloadVideo = async () => {
@@ -1596,7 +1683,7 @@ ${textArray}`;
                     {/* SRT download — timestamps from utterancesForVideo (server-computed, per-segment) */}
                     {utterancesForVideo.length > 0 && (
                       <button
-                        onClick={generateRecapSRT}
+                        onClick={handleDownloadSRT}
                         className="w-full py-2.5 bg-white/10 border border-orange-400/30 hover:bg-orange-500/20 text-orange-300 font-bold rounded-xl flex items-center justify-center gap-2 text-sm transition-all"
                       >
                         <Download className="w-4 h-4" /> Download Subtitle (.srt) — လုပ်မည် timing ကိုက်ညိပ်
@@ -2227,7 +2314,7 @@ ${textArray}`;
                       {/* SRT download — timestamps from utterancesForVideo (server-computed per-segment stretch) */}
                       {utterancesForVideo.length > 0 && (
                         <button
-                          onClick={generateRecapSRT}
+                          onClick={handleDownloadSRT}
                           className="w-full py-3 bg-white/10 border border-orange-400/30 hover:bg-orange-500/20 text-orange-300 font-bold rounded-xl flex items-center justify-center gap-2 text-sm transition-all"
                         >
                           <Download className="w-5 h-5" /> Download Subtitle (.srt) — လုပ်မည် timing ကိုက်ညိပ်
