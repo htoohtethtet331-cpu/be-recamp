@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { KeyRound, CheckCircle2, Loader2, ArrowLeft, Users, ShieldAlert, Search, Eye, EyeOff } from 'lucide-react';
+import { KeyRound, CheckCircle2, Loader2, ArrowLeft, Users, ShieldAlert, Search, Eye, EyeOff, UploadCloud } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function AdminDashboard({ onBack }) {
