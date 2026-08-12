@@ -1572,7 +1572,7 @@ ${textArray}`;
           </div>
         </div>
         <AutoLoadingOverlay step={autoStep} progress={autoProgress} onCancel={handleCancelAutoProcess} />
-        <UserProfileDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} user={user} logout={logout} packages={pricingPackages} />
+        <UserProfileDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} user={user} logout={logout} packages={pricingPackages} setPaymentModalPkg={setPaymentModalPkg} />
       </div>
     );
   }
@@ -2132,7 +2132,7 @@ ${textArray}`;
         )}
       </div>
 
-      <UserProfileDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} user={user} logout={logout} packages={pricingPackages} setShowGuide={setShowGuide} />
+      <UserProfileDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} user={user} logout={logout} packages={pricingPackages} setPaymentModalPkg={setPaymentModalPkg} setShowGuide={setShowGuide} />
 
       {/* Guide Modal */}
       {showGuide && (
@@ -2176,133 +2176,6 @@ ${textArray}`;
           </div>
         </div>
       )}
-
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
-    </div>
-  );
-}
-
-const UserProfileDrawer = ({ isOpen, onClose, user, logout, packages = [], setShowGuide }) => {
-  return (
-    <div className={`fixed inset-0 z-[100] flex justify-end transition-all duration-300 ${isOpen ? 'visible' : 'invisible pointer-events-none'}`}>
-      {/* Backdrop */}
-      <div
-        className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0'}`}
-        onClick={onClose}
-      />
-
-      {/* Drawer */}
-      <div className={`relative w-full max-w-[360px] h-full bg-[#0f172a] border-l border-white/10 shadow-2xl flex flex-col transition-transform duration-300 ease-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/10 bg-white/5 shrink-0">
-          <div className="flex items-center gap-3">
-            {user.picture ? (
-              <img src={user.picture} alt={user.name} className="w-10 h-10 rounded-full border-2 border-purple-500" />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center font-bold text-lg text-white">
-                {user.name.charAt(0)}
-              </div>
-            )}
-            <div className="flex flex-col">
-              <span className="font-bold text-white text-lg leading-tight">{user.name}</span>
-              <span className="text-xs text-purple-400 font-bold uppercase">
-                {user.role} {getLimitDisplay(user)}
-              </span>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-8">
-
-          {/* Guide Button */}
-          <button 
-            onClick={() => { onClose(); setShowGuide(true); }}
-            className="w-full flex items-center justify-center gap-2 p-3 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 text-white font-bold text-sm transition-colors"
-          >
-            <HelpCircle className="w-4 h-4 text-purple-400" /> အသုံးပြုနည်း လမ်းညွှန်
-          </button>
-
-          {/* Credit Status */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-white">
-                <CreditCard className="w-5 h-5 text-purple-400" />
-                <span className="font-bold">လက်ကျန် ဗီဒီယို</span>
-              </div>
-              <span className="text-sm font-mono text-white/70">
-                {user?.role === 'free' ? `${getFreeLimitRemaining(user)} / 3 Free` : `${user?.videoLimit || 0} ဗီဒီယို ကျန်ရှိ`}
-              </span>
-            </div>
-            <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all"
-                style={{ width: user?.role === 'free' ? `${(getFreeLimitRemaining(user) / 3) * 100}%` : '100%' }}
-              />
-            </div>
-            <p className="text-[10px] text-gray-400">
-              {user?.role === 'free'
-                ? `You have ${getFreeLimitRemaining(user)} out of 3 free videos left.`
-                : `You have ${user?.videoLimit || 0} credits remaining in your account.`}
-            </p>
-          </div>
-
-          {/* Pricing Plans */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-bold text-white mb-2">Upgrade Packages</h3>
-
-            {packages.map((pkg, index) => (
-              <div key={index} onClick={() => alert('Premium purchasing coming soon!')} className={`p-4 rounded-xl border transition cursor-pointer group relative overflow-hidden ${pkg.isPopular ? 'border-purple-500/50 bg-purple-500/10 hover:bg-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.1)]' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
-                {pkg.isPopular && (
-                  <div className="absolute top-0 right-0 bg-purple-500 text-white text-[10px] font-bold px-2 py-1 rounded-bl-lg z-10">အရောင်းရဆုံး</div>
-                )}
-                {pkg.discount > 0 && (
-                  <div className="absolute top-0 left-0 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-br-lg z-10 shadow-lg">{pkg.discount}% OFF</div>
-                )}
-                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition">
-                  <Sparkles className={`w-12 h-12 ${pkg.isPopular ? 'text-purple-400' : 'text-blue-400'}`} />
-                </div>
-                <h4 className={`font-bold text-lg mb-1 ${pkg.isPopular ? 'text-purple-400' : 'text-blue-400'} ${pkg.discount > 0 ? 'mt-3' : ''}`}>{pkg.title}</h4>
-                <div className="flex flex-col mb-3">
-                  {pkg.discount > 0 && (
-                    <span className="text-gray-500 text-sm line-through decoration-red-500/70 decoration-2">{Math.round(pkg.mmk / (1 - pkg.discount / 100)).toLocaleString()} MMK</span>
-                  )}
-                  <div className="flex items-end gap-2">
-                    <span className="text-2xl font-black text-white">{pkg.mmk.toLocaleString()} MMK</span>
-                    <span className="text-sm text-gray-400 mb-1 ml-1">/ {pkg.bath} Bath</span>
-                  </div>
-                  <div className="mt-2 flex items-center gap-2 text-emerald-400 text-sm font-medium bg-emerald-500/10 w-fit px-2 py-1 rounded-md border border-emerald-500/20">
-                    <Video className="w-4 h-4" />
-                    <span>{pkg.videos} Videos</span>
-                  </div>
-                </div>
-                <button className={`w-full py-2 rounded-lg text-sm font-bold transition ${pkg.isPopular ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/30 hover:bg-purple-600' : 'bg-blue-500/20 hover:bg-blue-500 text-blue-300 hover:text-white'}`}>ဝယ်မည်</button>
-              </div>
-            ))}
-            {packages.length === 0 && (
-              <p className="text-gray-500 text-sm italic">No packages available.</p>
-            )}
-          </div>
-
-        </div>
-
-        {/* Footer / Logout */}
-        <div className="p-4 border-t border-white/10 bg-black/20 shrink-0">
-          <button
-            onClick={logout}
-            className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl font-bold flex items-center justify-center gap-2 transition"
-          >
-            <LogOut className="w-4 h-4" />
-            Log Out
-          </button>
-        </div>
-      </div>
 
       {/* Payment Modal */}
       {paymentModalPkg && (
@@ -2388,7 +2261,135 @@ const UserProfileDrawer = ({ isOpen, onClose, user, logout, packages = [], setSh
           </div>
         </div>
       )}
+    
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
     </div>
+  );
+}
+
+const UserProfileDrawer = ({ isOpen, onClose, user, logout, packages = [], setShowGuide, setPaymentModalPkg }) => {
+  return (
+    <div className={`fixed inset-0 z-[100] flex justify-end transition-all duration-300 ${isOpen ? 'visible' : 'invisible pointer-events-none'}`}>
+      {/* Backdrop */}
+      <div
+        className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0'}`}
+        onClick={onClose}
+      />
+
+      {/* Drawer */}
+      <div className={`relative w-full max-w-[360px] h-full bg-[#0f172a] border-l border-white/10 shadow-2xl flex flex-col transition-transform duration-300 ease-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-white/10 bg-white/5 shrink-0">
+          <div className="flex items-center gap-3">
+            {user.picture ? (
+              <img src={user.picture} alt={user.name} className="w-10 h-10 rounded-full border-2 border-purple-500" />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center font-bold text-lg text-white">
+                {user.name.charAt(0)}
+              </div>
+            )}
+            <div className="flex flex-col">
+              <span className="font-bold text-white text-lg leading-tight">{user.name}</span>
+              <span className="text-xs text-purple-400 font-bold uppercase">
+                {user.role} {getLimitDisplay(user)}
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-8">
+
+          {/* Guide Button */}
+          <button 
+            onClick={() => { onClose(); setShowGuide(true); }}
+            className="w-full flex items-center justify-center gap-2 p-3 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 text-white font-bold text-sm transition-colors"
+          >
+            <HelpCircle className="w-4 h-4 text-purple-400" /> အသုံးပြုနည်း လမ်းညွှန်
+          </button>
+
+          {/* Credit Status */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-white">
+                <CreditCard className="w-5 h-5 text-purple-400" />
+                <span className="font-bold">လက်ကျန် ဗီဒီယို</span>
+              </div>
+              <span className="text-sm font-mono text-white/70">
+                {user?.role === 'free' ? `${getFreeLimitRemaining(user)} / 3 Free` : `${user?.videoLimit || 0} ဗီဒီယို ကျန်ရှိ`}
+              </span>
+            </div>
+            <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all"
+                style={{ width: user?.role === 'free' ? `${(getFreeLimitRemaining(user) / 3) * 100}%` : '100%' }}
+              />
+            </div>
+            <p className="text-[10px] text-gray-400">
+              {user?.role === 'free'
+                ? `You have ${getFreeLimitRemaining(user)} out of 3 free videos left.`
+                : `You have ${user?.videoLimit || 0} credits remaining in your account.`}
+            </p>
+          </div>
+
+          {/* Pricing Plans */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-bold text-white mb-2">Upgrade Packages</h3>
+
+            {packages.map((pkg, index) => (
+              <div key={index} onClick={() => setPaymentModalPkg(pkg)} className={`p-4 rounded-xl border transition cursor-pointer group relative overflow-hidden ${pkg.isPopular ? 'border-purple-500/50 bg-purple-500/10 hover:bg-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.1)]' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
+                {pkg.isPopular && (
+                  <div className="absolute top-0 right-0 bg-purple-500 text-white text-[10px] font-bold px-2 py-1 rounded-bl-lg z-10">အရောင်းရဆုံး</div>
+                )}
+                {pkg.discount > 0 && (
+                  <div className="absolute top-0 left-0 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-br-lg z-10 shadow-lg">{pkg.discount}% OFF</div>
+                )}
+                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition">
+                  <Sparkles className={`w-12 h-12 ${pkg.isPopular ? 'text-purple-400' : 'text-blue-400'}`} />
+                </div>
+                <h4 className={`font-bold text-lg mb-1 ${pkg.isPopular ? 'text-purple-400' : 'text-blue-400'} ${pkg.discount > 0 ? 'mt-3' : ''}`}>{pkg.title}</h4>
+                <div className="flex flex-col mb-3">
+                  {pkg.discount > 0 && (
+                    <span className="text-gray-500 text-sm line-through decoration-red-500/70 decoration-2">{Math.round(pkg.mmk / (1 - pkg.discount / 100)).toLocaleString()} MMK</span>
+                  )}
+                  <div className="flex items-end gap-2">
+                    <span className="text-2xl font-black text-white">{pkg.mmk.toLocaleString()} MMK</span>
+                    <span className="text-sm text-gray-400 mb-1 ml-1">/ {pkg.bath} Bath</span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2 text-emerald-400 text-sm font-medium bg-emerald-500/10 w-fit px-2 py-1 rounded-md border border-emerald-500/20">
+                    <Video className="w-4 h-4" />
+                    <span>{pkg.videos} Videos</span>
+                  </div>
+                </div>
+                <button className={`w-full py-2 rounded-lg text-sm font-bold transition ${pkg.isPopular ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/30 hover:bg-purple-600' : 'bg-blue-500/20 hover:bg-blue-500 text-blue-300 hover:text-white'}`}>ဝယ်မည်</button>
+              </div>
+            ))}
+            {packages.length === 0 && (
+              <p className="text-gray-500 text-sm italic">No packages available.</p>
+            )}
+          </div>
+
+        </div>
+
+        {/* Footer / Logout */}
+        <div className="p-4 border-t border-white/10 bg-black/20 shrink-0">
+          <button
+            onClick={logout}
+            className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl font-bold flex items-center justify-center gap-2 transition"
+          >
+            <LogOut className="w-4 h-4" />
+            Log Out
+          </button>
+        </div>
+      </div>
+
+      </div>
   );
 };
 
