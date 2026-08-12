@@ -2247,7 +2247,19 @@ ${textArray}`;
 
                     <div>
                       <label className="block text-xs font-medium text-gray-400 mb-1">Payment Screenshot (ငွေလွှဲပြေစာ)</label>
-                      <input type="file" required accept="image/*" onChange={(e) => setPaymentFile(e.target.files[0])} className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-300 file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-purple-500/20 file:text-purple-400 hover:file:bg-purple-500/30" />
+                      <label className="flex flex-col items-center justify-center w-full h-24 px-4 transition bg-white/5 border-2 border-white/10 border-dashed rounded-xl appearance-none cursor-pointer hover:border-purple-500/50 hover:bg-white/10 focus:outline-none">
+                        <div className="flex flex-col items-center space-y-2">
+                          <UploadCloud className="w-6 h-6 text-purple-400" />
+                          <span className="font-medium text-gray-400 text-xs text-center">
+                            {paymentFile ? (
+                              <span className="text-emerald-400">{paymentFile.name}</span>
+                            ) : (
+                              <>Drop file to attach, or <span className="text-purple-400 underline">browse</span></>
+                            )}
+                          </span>
+                        </div>
+                        <input type="file" required accept="image/*" className="hidden" onChange={(e) => setPaymentFile(e.target.files[0])} />
+                      </label>
                     </div>
 
                     <button type="submit" disabled={paymentLoading} className={`w-full mt-4 py-3 rounded-xl font-bold transition flex items-center justify-center gap-2 ${paymentLoading ? 'bg-purple-600/50 text-white/50 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-500/20'}`}>

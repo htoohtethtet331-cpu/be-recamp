@@ -12,7 +12,7 @@ export default function AdminDashboard({ onBack }) {
     : `http://${window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname}:5001/api`;
 
   // Keys state
-  const [keys, setKeys] = useState({ geminiKey: '', groqKey: '', groqKeys: ['', '', '', '', ''], assemblyAiKey: '', packages: [] });
+  const [keys, setKeys] = useState({ geminiKey: '', groqKey: '', groqKeys: ['', '', '', '', ''], assemblyAiKey: '', packages: [], kpayQr: '', waveQr: '', promptpayQr: '' });
   const [showKeys, setShowKeys] = useState({ gemini: false, groq1: false, groq2: false, groq3: false, groq4: false, groq5: false, assembly: false });
   const [loadingKeys, setLoadingKeys] = useState(true);
   const [savingKeys, setSavingKeys] = useState(false);
@@ -42,7 +42,10 @@ export default function AdminDashboard({ onBack }) {
           groqKey: response.data.groqKey || '',
           groqKeys: fetchedGroqKeys,
           assemblyAiKey: response.data.assemblyAiKey || '',
-          packages: response.data.packages || []
+          packages: response.data.packages || [],
+          kpayQr: response.data.kpayQr || '',
+          waveQr: response.data.waveQr || '',
+          promptpayQr: response.data.promptpayQr || ''
         });
       } catch (error) {
         console.error('Failed to fetch keys:', error);
@@ -227,6 +230,29 @@ export default function AdminDashboard({ onBack }) {
                   </button>
                 </div>
               </div>
+
+              {/* Payment QR Codes */}
+              <div className="pt-6 border-t border-white/10 mt-6 space-y-4">
+                <div>
+                  <h3 className="text-lg font-bold text-white">Payment QR Codes (URLs)</h3>
+                  <p className="text-xs text-gray-400">Enter direct image URLs (e.g. from Imgur) for the payment QR codes.</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-300 mb-1.5">KPay QR URL</label>
+                    <input type="text" value={keys.kpayQr} onChange={(e) => setKeys({ ...keys, kpayQr: e.target.value })} className="w-full bg-black/20 border border-white/10 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-600" placeholder="https://..." />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-300 mb-1.5">Wave Pay QR URL</label>
+                    <input type="text" value={keys.waveQr} onChange={(e) => setKeys({ ...keys, waveQr: e.target.value })} className="w-full bg-black/20 border border-white/10 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-600" placeholder="https://..." />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-300 mb-1.5">PromptPay QR URL</label>
+                    <input type="text" value={keys.promptpayQr} onChange={(e) => setKeys({ ...keys, promptpayQr: e.target.value })} className="w-full bg-black/20 border border-white/10 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-600" placeholder="https://..." />
+                  </div>
+                </div>
+              </div>
+
               {/* Pricing Packages */}
               <div className="pt-6 border-t border-white/10 mt-6">
                 <div className="flex justify-between items-center mb-4">

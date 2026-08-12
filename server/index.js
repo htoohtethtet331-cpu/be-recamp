@@ -122,7 +122,7 @@ app.post('/api/auth/google', async (req, res) => {
 
     // Generate JWT
     const token = jwt.sign(
-      { id: user._id, role: user.role, name: user.name, picture: user.picture, videoLimit: user.videoLimit, freeVideosUsed: user.freeVideosUsed, lastFreeVideoDate: user.lastFreeVideoDate },
+      { id: user._id, role: user.role, name: user.name, email: user.email, picture: user.picture, videoLimit: user.videoLimit, freeVideosUsed: user.freeVideosUsed, lastFreeVideoDate: user.lastFreeVideoDate },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -144,12 +144,12 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
     
     // Create a fresh token in case role changed
     const freshToken = jwt.sign(
-      { id: user._id, role: user.role, name: user.name, picture: user.picture, videoLimit: user.videoLimit, freeVideosUsed: user.freeVideosUsed, lastFreeVideoDate: user.lastFreeVideoDate },
+      { id: user._id, role: user.role, name: user.name, email: user.email, picture: user.picture, videoLimit: user.videoLimit, freeVideosUsed: user.freeVideosUsed, lastFreeVideoDate: user.lastFreeVideoDate },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
     
-    res.json({ token: freshToken, user: { id: user._id, role: user.role, name: user.name, picture: user.picture, videoLimit: user.videoLimit, freeVideosUsed: user.freeVideosUsed, lastFreeVideoDate: user.lastFreeVideoDate } });
+    res.json({ token: freshToken, user: { id: user._id, role: user.role, name: user.name, email: user.email, picture: user.picture, videoLimit: user.videoLimit, freeVideosUsed: user.freeVideosUsed, lastFreeVideoDate: user.lastFreeVideoDate } });
   } catch (error) {
     res.status(500).json({ error: 'Server error fetching user' });
   }
