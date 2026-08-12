@@ -15,6 +15,7 @@ const Settings = require('./models/Settings');
 const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
 const User = require('./models/User');
+const Payment = require('./models/Payment');
 const { requireAuth, requireAdmin, JWT_SECRET } = require('./middleware/auth');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -172,16 +173,19 @@ app.get('/api/admin/keys', requireAdmin, async (req, res) => {
 // Update API Keys & Packages
 app.post('/api/admin/keys', requireAdmin, async (req, res) => {
   try {
-    const { geminiKey, groqKey, groqKeys, assemblyAiKey, packages } = req.body;
+    const { geminiKey, groqKey, groqKeys, assemblyAiKey, packages, kpayQr, waveQr, promptpayQr } = req.body;
     let settings = await Settings.findOne();
     if (!settings) {
-      settings = await Settings.create({ geminiKey, groqKey, groqKeys, assemblyAiKey, packages });
+      settings = await Settings.create({ geminiKey, groqKey, groqKeys, assemblyAiKey, packages, kpayQr, waveQr, promptpayQr });
     } else {
       if (geminiKey !== undefined) settings.geminiKey = geminiKey;
       if (groqKey !== undefined) settings.groqKey = groqKey;
       if (groqKeys !== undefined) settings.groqKeys = groqKeys;
       if (assemblyAiKey !== undefined) settings.assemblyAiKey = assemblyAiKey;
       if (packages !== undefined) settings.packages = packages;
+      if (kpayQr !== undefined) settings.kpayQr = kpayQr;
+      if (waveQr !== undefined) settings.waveQr = waveQr;
+      if (promptpayQr !== undefined) settings.promptpayQr = promptpayQr;
       await settings.save();
     }
     res.json(settings);
@@ -191,14 +195,19 @@ app.post('/api/admin/keys', requireAdmin, async (req, res) => {
   }
 });
 
-// Get Public Settings (e.g. Packages)
+// Get Public Settings (e.g. Packages & QRs)
 app.get('/api/settings/public', async (req, res) => {
   try {
     let settings = await Settings.findOne();
     if (!settings) {
       settings = await Settings.create({});
     }
-    res.json({ packages: settings.packages });
+    res.json({ 
+      packages: settings.packages,
+      kpayQr: settings.kpayQr,
+      waveQr: settings.waveQr,
+      promptpayQr: settings.promptpayQr 
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch public settings' });
   }
@@ -240,6 +249,48 @@ app.put('/api/admin/users/:id/limit', requireAdmin, async (req, res) => {
     res.json(user);
   } catch (error) {
     res.status(500).json({ error: 'Failed to update user limit' });
+  }
+});
+
+// --- Payment Endpoints ---
+
+// Submit a new payment request
+app.post('/api/payment/submit', requireAuth, upload.single('receipt'), async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const { phone, packageTitle, packageMmk, packageVideos, paymentMethod } = req.body;
+    const file = req.file;
+
+    if (!phone || !packageTitle || !packageMmk || !packageVideos || !paymentMethod) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    if (!file) {
+      return res.status(400).json({ error: 'Payment receipt image is required' });
+    }
+
+    // Save payment request to database
+    const payment = new Payment({
+      userId: user._id,
+      name: user.name,
+      email: user.email,
+      phone,
+      packageTitle,
+      packageMmk: Number(packageMmk),
+      packageVideos: Number(packageVideos),
+      paymentMethod,
+      receiptUrl: `/uploads/${file.filename}`,
+      status: 'pending'
+    });
+
+    await payment.save();
+    console.log(`[Payment] New request from ${user.name} (${user.email}) for ${packageTitle}`);
+    
+    res.status(201).json({ success: true, message: 'Payment submitted successfully', payment });
+  } catch (error) {
+    console.error('Payment submit error:', error);
+    res.status(500).json({ error: 'Failed to submit payment' });
   }
 });
 

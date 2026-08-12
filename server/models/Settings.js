@@ -17,6 +17,18 @@ const settingsSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  kpayQr: {
+    type: String,
+    default: ''
+  },
+  waveQr: {
+    type: String,
+    default: ''
+  },
+  promptpayQr: {
+    type: String,
+    default: ''
+  },
   packages: {
     type: [{
       title: String,

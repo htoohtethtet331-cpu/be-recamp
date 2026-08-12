@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
-import { Check, CheckCircle2, Download, RefreshCw, Play, Loader2, AlertTriangle, SlidersHorizontal, ArrowRight, Video, Sparkles, Copy, Settings, LogOut, UploadCloud, Headphones, Zap, X, CreditCard, HelpCircle, KeyRound, ChevronDown, Film } from 'lucide-react';
+import { Check, CheckCircle, CheckCircle2, Download, RefreshCw, Play, Loader2, AlertTriangle, SlidersHorizontal, ArrowRight, Video, Sparkles, Copy, Settings, LogOut, Upload, UploadCloud, Headphones, Zap, X, CreditCard, HelpCircle, KeyRound, ChevronDown, Film } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from './context/AuthContext';
@@ -312,6 +312,15 @@ function App() {
   const apiUrl = rawApiUrl.replace(/\/+$/, '');
 
   const [pricingPackages, setPricingPackages] = useState([]);
+  const [adminQrs, setAdminQrs] = useState({ kpay: '', wave: '', promptpay: '' });
+  
+  // Payment Modal State
+  const [paymentModalPkg, setPaymentModalPkg] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState('kpay');
+  const [paymentPhone, setPaymentPhone] = useState('');
+  const [paymentFile, setPaymentFile] = useState(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
 
   useEffect(() => {
     const fetchPackages = async () => {
@@ -321,6 +330,11 @@ function App() {
         if (data.packages) {
           setPricingPackages(data.packages);
         }
+        setAdminQrs({
+          kpay: data.kpayQr || '',
+          wave: data.waveQr || '',
+          promptpay: data.promptpayQr || ''
+        });
       } catch (err) {
         console.error("Failed to fetch packages", err);
       }
@@ -1291,6 +1305,44 @@ ${textArray}`;
     }
   };
 
+  const handlePaymentSubmit = async (e) => {
+    e.preventDefault();
+    if (!paymentPhone || !paymentFile || !paymentModalPkg) return;
+    
+    setPaymentLoading(true);
+    const formData = new FormData();
+    formData.append('phone', paymentPhone);
+    formData.append('packageTitle', paymentModalPkg.title);
+    formData.append('packageMmk', paymentModalPkg.mmk);
+    formData.append('packageVideos', paymentModalPkg.videos);
+    formData.append('paymentMethod', paymentMethod);
+    formData.append('receipt', paymentFile);
+
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(`${apiUrl}/payment/submit`, formData, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      setPaymentSuccess(true);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to submit payment. Please try again.');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const closePaymentModal = () => {
+    setPaymentModalPkg(null);
+    setPaymentMethod('kpay');
+    setPaymentPhone('');
+    setPaymentFile(null);
+    setPaymentSuccess(false);
+  };
+
   if (!user) {
     return (
       <div className="min-h-screen bg-[#0F172A] flex flex-col items-center justify-center p-4">
@@ -2251,6 +2303,91 @@ const UserProfileDrawer = ({ isOpen, onClose, user, logout, packages = [], setSh
           </button>
         </div>
       </div>
+
+      {/* Payment Modal */}
+      {paymentModalPkg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#1a1a2e] rounded-3xl w-full max-w-md border border-white/10 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center p-5 border-b border-white/10 shrink-0">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-purple-400" /> Package ဝယ်ယူမည်
+              </h2>
+              <button onClick={closePaymentModal} className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-white/50 hover:text-white transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-5 overflow-y-auto">
+              {paymentSuccess ? (
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-white mb-2">Payment Submitted!</h3>
+                  <p className="text-gray-400">Admin မှ အမြန်ဆုံး စစ်ဆေးပြီး Point ထည့်ပေးပါမည်။ ကျေးဇူးတင်ပါတယ်။</p>
+                  <button onClick={closePaymentModal} className="mt-6 px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl font-medium transition">
+                    Close
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-4 mb-6">
+                    <div className="flex justify-between items-center">
+                      <span className="text-purple-300 font-medium">{paymentModalPkg.title}</span>
+                      <span className="text-white font-bold">{paymentModalPkg.mmk.toLocaleString()} MMK</span>
+                    </div>
+                  </div>
+
+                  {/* Payment Method Tabs */}
+                  <div className="flex bg-white/5 p-1 rounded-xl mb-6">
+                    <button onClick={() => setPaymentMethod('kpay')} className={`flex-1 py-2 text-sm font-medium rounded-lg transition ${paymentMethod === 'kpay' ? 'bg-blue-500 text-white shadow' : 'text-gray-400 hover:text-white'}`}>KPay</button>
+                    <button onClick={() => setPaymentMethod('wave')} className={`flex-1 py-2 text-sm font-medium rounded-lg transition ${paymentMethod === 'wave' ? 'bg-yellow-500 text-white shadow' : 'text-gray-400 hover:text-white'}`}>Wave Pay</button>
+                    <button onClick={() => setPaymentMethod('promptpay')} className={`flex-1 py-2 text-sm font-medium rounded-lg transition ${paymentMethod === 'promptpay' ? 'bg-indigo-500 text-white shadow' : 'text-gray-400 hover:text-white'}`}>PromptPay</button>
+                  </div>
+
+                  {/* QR Code Display */}
+                  <div className="flex flex-col items-center mb-6">
+                    <div className="w-48 h-48 bg-white rounded-xl p-2 flex items-center justify-center relative overflow-hidden shadow-xl">
+                      {paymentMethod === 'kpay' && (adminQrs.kpay ? <img src={adminQrs.kpay} alt="KPay QR" className="w-full h-full object-contain" /> : <div className="text-gray-400 text-xs text-center">KPay QR Not Set</div>)}
+                      {paymentMethod === 'wave' && (adminQrs.wave ? <img src={adminQrs.wave} alt="Wave Pay QR" className="w-full h-full object-contain" /> : <div className="text-gray-400 text-xs text-center">Wave Pay QR Not Set</div>)}
+                      {paymentMethod === 'promptpay' && (adminQrs.promptpay ? <img src={adminQrs.promptpay} alt="PromptPay QR" className="w-full h-full object-contain" /> : <div className="text-gray-400 text-xs text-center">PromptPay QR Not Set</div>)}
+                    </div>
+                    <p className="text-xs text-gray-400 mt-3 text-center px-4">အထက်ပါ QR ကို Scan ဖတ်ပြီး ငွေလွှဲပေးပါ။ လွှဲပြီးပါက အောက်တွင် ပြေစာတင်ပေးပါ။</p>
+                  </div>
+
+                  <form onSubmit={handlePaymentSubmit} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-400 mb-1">Name</label>
+                        <input type="text" value={user.name} disabled className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-400 cursor-not-allowed" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-400 mb-1">Email</label>
+                        <input type="text" value={user.email || ''} disabled className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-400 cursor-not-allowed" />
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-1">Phone Number (ဖုန်းနံပါတ်)</label>
+                      <input type="tel" required value={paymentPhone} onChange={(e) => setPaymentPhone(e.target.value)} placeholder="09xxxxxxxxx" className="w-full bg-white/5 border border-white/10 focus:border-purple-500 rounded-lg px-3 py-2 text-sm text-white outline-none transition" />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-1">Payment Screenshot (ငွေလွှဲပြေစာ)</label>
+                      <input type="file" required accept="image/*" onChange={(e) => setPaymentFile(e.target.files[0])} className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-300 file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-purple-500/20 file:text-purple-400 hover:file:bg-purple-500/30" />
+                    </div>
+
+                    <button type="submit" disabled={paymentLoading} className={`w-full mt-4 py-3 rounded-xl font-bold transition flex items-center justify-center gap-2 ${paymentLoading ? 'bg-purple-600/50 text-white/50 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-500/20'}`}>
+                      {paymentLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+                      {paymentLoading ? 'Submitting...' : 'Sent to Admin'}
+                    </button>
+                  </form>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
