@@ -809,20 +809,21 @@ function App() {
   };
 
   // ─────────────────────────────────────────────────────────────────────────
-  // generateRecapSRT — pure client-side phrase-split subtitle generator
+  // generateRecapSRT — space-split subtitle generator (per utterance)
   //
-  //   Each utterance's translatedText may contain ། (Burmese period) markers
-  //   placed by the Gemini translation prompt to denote sentence/phrase boundaries.
+  //   Instead of splitting by ། (Burmese period), we split by spaces between
+  //   Burmese word groups. Each utterance's translated text is chunked into
+  //   short groups of ~MAX_CHUNK_CHARS characters, then timed proportionally.
   //
   //   Algorithm per utterance:
-  //     1. Split translatedText by ། (or | as fallback) → phrases[]
-  //     2. Total character count across all phrases
-  //     3. Each phrase gets time = segDuration × (phraseCharCount / totalCharCount)
-  //     4. Minimum display time: 0.4s per phrase
-  //     5. Timestamps capped to segment boundary (newVideoEnd)
+  //     1. Split rawText by whitespace → word groups (space-separated units)
+  //     2. Greedily accumulate words into chunks until chars > MAX_CHUNK_CHARS
+  //     3. Each chunk's display time = segDuration × (chunkChars / totalChars)
+  //     4. Minimum display time per chunk: MIN_DISPLAY_SEC
+  //     5. Last chunk snaps exactly to segEnd (no gap)
   //
-  //   If no ། found → whole utterance is one subtitle entry (backward compat).
-  //   Uses utterancesForVideo.newVideoStart/End (server-computed, exact).
+  //   Result: short, readable subtitle lines instead of one long line per utterance.
+  //   Uses utterancesForVideo.newVideoStart/End (server-computed, guaranteed correct).
   // ─────────────────────────────────────────────────────────────────────────
   const generateRecapSRT = () => {
     if (!utterancesForVideo || utterancesForVideo.length === 0) {
@@ -830,7 +831,11 @@ function App() {
       return;
     }
 
-    // Sort both arrays by original start time (server sorts by start, so this keeps parity)
+    // ── tuneable constants ──
+    const MAX_CHUNK_CHARS = 22;   // max Burmese chars per subtitle line (~3-5 word groups)
+    const MIN_DISPLAY_SEC = 0.35; // minimum subtitle display time
+
+    // Sort both arrays by original start time
     const sortedMap = [...utterancesForVideo].sort((a, b) => a.origStart - b.origStart);
     const sortedUtterances = [...utterances].sort((a, b) => a.start - b.start);
 
@@ -844,8 +849,6 @@ function App() {
       const ms = Math.round((s % 1) * 1000);
       return `${pad2(h)}:${pad2(m)}:${pad2(ss)},${String(ms).padStart(3, '0')}`;
     };
-
-    const MIN_PHRASE_DURATION = 0.4; // seconds — minimum subtitle display time
 
     let srt = '';
     let idx = 1;
@@ -861,49 +864,61 @@ function App() {
       const rawText = (utt?.translatedText || utt?.text || '').trim();
       if (!rawText) continue;
 
-      const segStart = vm.newVideoStart;   // seconds in final video
-      const segEnd   = vm.newVideoEnd;     // seconds in final video
+      const segStart = vm.newVideoStart;  // seconds in final video
+      const segEnd   = vm.newVideoEnd;    // seconds in final video
       const segDur   = Math.max(segEnd - segStart, 0.1);
 
-      // ── Split by ། (primary) and | (secondary), strip empties ──
-      // Keep the ། at end of each phrase for display (it looks natural in Burmese)
-      const rawPhrases = rawText.split(/[།|]/).map(p => p.trim()).filter(p => p.length > 0);
+      // ── 1. Split by whitespace into word groups ──
+      const words = rawText.split(/\s+/).filter(w => w.length > 0);
 
-      if (rawPhrases.length <= 1) {
-        // No phrase splits found — one entry for the whole utterance
+      if (words.length <= 1) {
+        // Single word — just one entry
         srt += `${idx}\n${toSrtTime(segStart)} --> ${toSrtTime(segEnd)}\n${rawText}\n\n`;
         idx++;
         continue;
       }
 
-      // ── Proportional timing by character count ──
-      const totalChars = rawPhrases.reduce((sum, p) => sum + p.length, 0);
-      if (totalChars === 0) continue;
+      // ── 2. Greedily group words into chunks ──
+      const chunks = [];
+      let current = '';
 
+      for (const word of words) {
+        if (current.length > 0 && current.length + word.length > MAX_CHUNK_CHARS) {
+          // Current chunk is full — save it and start a new one
+          chunks.push(current);
+          current = word;
+        } else {
+          current = current.length > 0 ? `${current} ${word}` : word;
+        }
+      }
+      if (current.length > 0) chunks.push(current);
+
+      if (chunks.length <= 1) {
+        // All words fit in one chunk — single entry
+        srt += `${idx}\n${toSrtTime(segStart)} --> ${toSrtTime(segEnd)}\n${rawText}\n\n`;
+        idx++;
+        continue;
+      }
+
+      // ── 3. Distribute segment time proportionally by chunk char count ──
+      const totalChars = chunks.reduce((sum, c) => sum + c.length, 0);
       let cursor = segStart;
 
-      for (let pi = 0; pi < rawPhrases.length; pi++) {
-        const phrase = rawPhrases[pi];
-        const isLast = pi === rawPhrases.length - 1;
+      for (let ci = 0; ci < chunks.length; ci++) {
+        const chunk  = chunks[ci];
+        const isLast = ci === chunks.length - 1;
 
-        // Proportional share of segment duration
-        const ratio = phrase.length / totalChars;
-        let phraseDur = segDur * ratio;
+        const ratio    = chunk.length / totalChars;
+        const rawDur   = Math.max(segDur * ratio, MIN_DISPLAY_SEC);
+        const chunkEnd = isLast ? segEnd : Math.min(cursor + rawDur, segEnd);
 
-        // Enforce minimum display time
-        phraseDur = Math.max(phraseDur, MIN_PHRASE_DURATION);
-
-        // Last phrase snaps to exact segEnd to avoid floating-point gap
-        const phraseEnd = isLast ? segEnd : Math.min(cursor + phraseDur, segEnd);
-
-        // Skip zero-width or negative entries (can happen if segDur is tiny)
-        if (phraseEnd > cursor + 0.01) {
-          srt += `${idx}\n${toSrtTime(cursor)} --> ${toSrtTime(phraseEnd)}\n${phrase}\n\n`;
+        if (chunkEnd > cursor + 0.01) {
+          srt += `${idx}\n${toSrtTime(cursor)} --> ${toSrtTime(chunkEnd)}\n${chunk}\n\n`;
           idx++;
         }
 
-        cursor = phraseEnd;
-        if (cursor >= segEnd) break; // budget exhausted
+        cursor = chunkEnd;
+        if (cursor >= segEnd) break;
       }
     }
 
@@ -913,15 +928,15 @@ function App() {
     }
 
     const blob = new Blob([srt], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
     a.href = url;
     a.download = (file?.name?.replace(/\.[^.]+$/, '') || 'recap') + '_subtitles.srt';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    console.log(`[Recap SRT] Generated ${idx - 1} subtitle entries from ${sortedMap.length} utterances.`);
+    console.log(`[Recap SRT] ${idx - 1} entries from ${sortedMap.length} utterances (space-split, MAX=${MAX_CHUNK_CHARS}ch).`);
   };
 
   const handleCancelAutoProcess = () => {
