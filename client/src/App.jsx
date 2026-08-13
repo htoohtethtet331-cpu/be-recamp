@@ -2102,7 +2102,7 @@ ${textArray}`;
 
               <div className="space-y-3">
                 {pricingPackages.map((pkg, index) => (
-                  <button key={index} onClick={() => { alert('Premium purchasing coming soon!'); setShowPremiumModal(false); }} className={`w-full p-3 rounded-xl border transition flex items-center justify-between group relative overflow-hidden ${pkg.isPopular ? 'border-purple-500/50 bg-purple-500/10 hover:bg-purple-500/20' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
+                  <button key={index} onClick={() => { setPaymentModalPkg(pkg); setShowPremiumModal(false); }} className={`w-full p-3 rounded-xl border transition flex items-center justify-between group relative overflow-hidden ${pkg.isPopular ? 'border-purple-500/50 bg-purple-500/10 hover:bg-purple-500/20' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
                     {pkg.isPopular && (
                       <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-purple-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-b-md z-10">အရောင်းရဆုံး</div>
                     )}
