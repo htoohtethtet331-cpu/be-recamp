@@ -2111,7 +2111,7 @@ ${textArray}`;
                     )}
                     <div className={`text-left ${(pkg.isPopular || pkg.discount > 0) ? 'mt-2' : ''}`}>
                       <h4 className={`font-bold text-sm flex items-center gap-2 ${pkg.isPopular ? 'text-purple-400' : 'text-blue-400'}`}>
-                        {pkg.title}
+                        {pkg.title} <span className="text-gray-400 font-normal text-[10px]">({pkg.videos} Videos)</span>
                       </h4>
                       <div className="flex flex-col mt-0.5">
                         {pkg.discount > 0 && (
