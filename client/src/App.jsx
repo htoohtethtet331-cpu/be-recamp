@@ -488,7 +488,7 @@ function App() {
           </div>
 
           <div>
-            <h2 className="text-2xl font-bold text-white mb-2 drop-shadow-md">Recap Studio AI</h2>
+            <h2 className="text-2xl font-bold text-white mb-2 drop-shadow-md">THET × DeepLearn AI</h2>
             <p className="text-blue-200/80 text-sm font-medium leading-relaxed bg-black/20 py-3 px-4 rounded-xl border border-white/5 inline-block">
               {ffmpegLoadingText}
             </p>
@@ -1351,7 +1351,7 @@ ${textArray}`;
             <Sparkles className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">
-            Welcome to Recap Studio
+            Welcome to THET × DeepLearn AI
           </h1>
           <p className="text-gray-400 mb-10">Please sign in to access your dashboard.</p>
           <div className="flex justify-center">
@@ -1398,7 +1398,7 @@ ${textArray}`;
             <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/30">
               <Sparkles className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-600">Recap Studio</h1>
+            <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-600">THET × DeepLearn AI</h1>
           </div>
           {/* Mode Switcher */}
           <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 bg-white/5 p-1 rounded-full items-center shadow-inner border border-white/10">
@@ -1585,7 +1585,7 @@ ${textArray}`;
           <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/30">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
-          <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-600">Recap Studio</h1>
+          <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-600">THET × DeepLearn AI</h1>
         </div>
 
         {/* Mode Switcher */}
