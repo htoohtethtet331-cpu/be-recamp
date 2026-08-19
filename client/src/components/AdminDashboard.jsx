@@ -353,7 +353,7 @@ export default function AdminDashboard({ onBack }) {
                           <input type="number" value={pkg.mmk} onChange={(e) => handlePackageChange(index, 'mmk', e.target.value === '' ? '' : parseInt(e.target.value))} className="w-full bg-black/20 border border-white/10 text-white rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
                         </div>
                         <div>
-                          <label className="block text-xs text-gray-400 mb-1">Price (Bath)</label>
+                          <label className="block text-xs text-gray-400 mb-1">Price (THB)</label>
                           <input type="number" value={pkg.bath} onChange={(e) => handlePackageChange(index, 'bath', e.target.value === '' ? '' : parseInt(e.target.value))} className="w-full bg-black/20 border border-white/10 text-white rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
                         </div>
                         <div>

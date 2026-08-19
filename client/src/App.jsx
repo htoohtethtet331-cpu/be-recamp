@@ -2117,7 +2117,7 @@ ${textArray}`;
                         {pkg.discount > 0 && (
                           <span className="text-gray-500 text-[10px] line-through decoration-red-500/50">{Math.round(pkg.mmk / (1 - pkg.discount / 100)).toLocaleString()} MMK</span>
                         )}
-                        <span className="text-gray-300 text-xs font-semibold">{pkg.mmk.toLocaleString()} MMK / {pkg.bath} Bath</span>
+                        <span className="text-gray-300 text-xs font-semibold">{pkg.mmk.toLocaleString()} MMK / {pkg.bath} THB</span>
                       </div>
                     </div>
                     <span className={`px-4 py-2 rounded-lg text-sm font-bold transition ${pkg.isPopular ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/30 group-hover:bg-purple-600' : 'bg-blue-500/20 text-blue-300 group-hover:bg-blue-500 group-hover:text-white'}`}>ဝယ်မည်</span>
@@ -2372,7 +2372,7 @@ const UserProfileDrawer = ({ isOpen, onClose, user, logout, packages = [], setSh
                   )}
                   <div className="flex items-end gap-2">
                     <span className="text-2xl font-black text-white">{pkg.mmk.toLocaleString()} MMK</span>
-                    <span className="text-sm text-gray-400 mb-1 ml-1">/ {pkg.bath} Bath</span>
+                    <span className="text-sm text-gray-400 mb-1 ml-1">/ {pkg.bath} THB</span>
                   </div>
                   <div className="mt-2 flex items-center gap-2 text-emerald-400 text-sm font-medium bg-emerald-500/10 w-fit px-2 py-1 rounded-md border border-emerald-500/20">
                     <Video className="w-4 h-4" />
